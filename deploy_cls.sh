@@ -86,7 +86,40 @@ generate_ssh_key() {
     fi
     
     print_status "Generating new SSH key..."
-    ssh-keygen -t ed25519 -f "$ssh_dir/id_ed25519" -N "" -C "$(whoami)@$(hostname)"
+    
+    # Check if expect is available for interactive key generation
+    if command_exists expect; then
+        # Use expect for interactive key generation
+        expect << EOF
+spawn ssh-keygen -t ed25519 -f "$ssh_dir/id_ed25519" -C "$(whoami)@$(hostname)"
+expect "Enter passphrase (empty for no passphrase):"
+send "\r"
+expect "Enter same passphrase again:"
+send "\r"
+expect eof
+EOF
+    else
+        # Fallback: try to generate with empty passphrase
+        print_status "Installing expect for SSH key generation..."
+        run_with_sudo apt install -y expect
+        
+        expect << EOF
+spawn ssh-keygen -t ed25519 -f "$ssh_dir/id_ed25519" -C "$(whoami)@$(hostname)"
+expect "Enter passphrase (empty for no passphrase):"
+send "\r"
+expect "Enter same passphrase again:"
+send "\r"
+expect eof
+EOF
+    fi
+    
+    # Verify the key was created
+    if [ -f "$ssh_dir/id_ed25519.pub" ]; then
+        print_status "SSH key generated successfully"
+    else
+        print_error "Failed to generate SSH key"
+        return 1
+    fi
     
     # Return the generated key file
     echo "$ssh_dir/id_ed25519.pub"
@@ -365,11 +398,34 @@ step_configure_project() {
     
     print_status "Configuring Laravel environment..."
     cp ./.env.example ./.env
-    sed -i "s/__DOMAIN__/${domain}/g" ./.env
-    sed -i "s/__DB__/${db}/g" ./.env
-    sed -i "s/__DBHOST__/${db_host:-localhost}/g" ./.env
-    sed -i "s/__USER__/${user}/g" ./.env
-    sed -i "s/__PASS__/${pass}/g" ./.env
+    
+    # Update Laravel .env file with proper database configuration
+    print_status "Updating database configuration in .env file..."
+    
+    # Update APP_URL
+    sed -i.bak "s|APP_URL=.*|APP_URL=https://${domain}|g" ./.env && rm ./.env.bak
+    
+    # Update database configuration
+    sed -i.bak "s/DB_CONNECTION=.*/DB_CONNECTION=mysql/g" ./.env && rm ./.env.bak
+    sed -i.bak "s/DB_HOST=.*/DB_HOST=${db_host:-localhost}/g" ./.env && rm ./.env.bak
+    sed -i.bak "s/DB_PORT=.*/DB_PORT=3306/g" ./.env && rm ./.env.bak
+    sed -i.bak "s/DB_DATABASE=.*/DB_DATABASE=${db}/g" ./.env && rm ./.env.bak
+    sed -i.bak "s/DB_USERNAME=.*/DB_USERNAME=${user}/g" ./.env && rm ./.env.bak
+    sed -i.bak "s/DB_PASSWORD=.*/DB_PASSWORD=${pass}/g" ./.env && rm ./.env.bak
+    
+    # Update mail configuration
+    sed -i.bak "s/MAIL_FROM_ADDRESS=.*/MAIL_FROM_ADDRESS=${contact}/g" ./.env && rm ./.env.bak
+    sed -i.bak "s/MAIL_FROM_NAME=.*/MAIL_FROM_NAME=\"CLS System\"/g" ./.env && rm ./.env.bak
+    
+    # Verify the configuration was applied correctly
+    print_status "Verifying .env configuration..."
+    if grep -q "DB_DATABASE=${db}" ./.env && grep -q "DB_USERNAME=${user}" ./.env && grep -q "DB_PASSWORD=${pass}" ./.env; then
+        print_status "Database configuration updated successfully"
+    else
+        print_warning "Database configuration may not have been updated correctly"
+        print_status "Current database settings:"
+        grep -E "^DB_(HOST|PORT|DATABASE|USERNAME|PASSWORD)=" ./.env || true
+    fi
     
     print_status "Creating upload directories..."
     local upload_dirs=("public/upload" "public/upload/import" "public/upload/export" "public/upload/temp" "public/upload/library" "public/upload/location" "public/upload/srf")
