@@ -190,8 +190,8 @@ run_with_sudo() {
     fi
 }
 
-# Function to show menu and get user choice
-show_menu() {
+# Function to show initial deployment choice
+show_initial_choice() {
     echo ""
     echo "=========================================="
     echo "  CLS Laravel Project Deployment Script  "
@@ -205,18 +205,56 @@ show_menu() {
     echo "  Repository: ${repo:-'Not set'}"
     echo "  Branch: ${branch:-'Not set'}"
     echo ""
+    echo "Choose deployment method:"
+    echo "  1) Normal Deployment (Apache + MySQL on host)"
+    echo "  2) Docker Deployment (Containerized)"
+    echo "  q) Quit"
+    echo ""
+}
+
+# Function to show normal deployment menu
+show_normal_menu() {
+    echo ""
+    echo "=========================================="
+    echo "  CLS Normal Deployment Steps"
+    echo "=========================================="
+    echo ""
     echo "Available Steps:"
     echo "  1) Update system packages"
     echo "  2) Install Apache, MySQL, PHP and dependencies"
     echo "  3) Setup SSH keys"
     echo "  4) Configure database"
-    echo "  5) Clone and configure Laravel project"
-    echo "  6) Setup SSL certificate"
-    echo "  7) Setup backup and maintenance cron jobs"
-    echo "  8) Setup server update cron job"
-    echo "  9) Install Traccar server"
+    echo "  5) Clone Laravel project"
+    echo "  6) Configure Laravel project"
+    echo "  7) Setup SSL certificate"
+    echo "  8) Setup backup and maintenance cron jobs"
+    echo "  9) Setup server update cron job"
+    echo "  10) Install Traccar server"
     echo "  a) Run all steps"
     echo "  s) Skip to specific step"
+    echo "  b) Back to main menu"
+    echo "  q) Quit"
+    echo ""
+}
+
+# Function to show Docker deployment menu
+show_docker_menu() {
+    echo ""
+    echo "=========================================="
+    echo "  CLS Docker Deployment Steps"
+    echo "=========================================="
+    echo ""
+    echo "Available Steps:"
+    echo "  1) Update system packages"
+    echo "  2) Install Docker and Docker Compose"
+    echo "  3) Setup SSH keys"
+    echo "  4) Clone Laravel project"
+    echo "  5) Configure Docker environment"
+    echo "  6) Deploy with Docker"
+    echo "  7) Setup Traccar service (optional)"
+    echo "  a) Run all steps"
+    echo "  s) Skip to specific step"
+    echo "  b) Back to main menu"
     echo "  q) Quit"
     echo ""
 }
@@ -356,12 +394,12 @@ step_configure_database() {
     print_status "Database configuration completed!"
 }
 
-# Step 5: Clone and configure Laravel project
-step_configure_project() {
-    print_step "Configuring Laravel project..."
+# Step 5: Clone Laravel project
+step_clone_project() {
+    print_step "Cloning Laravel project..."
     
-    if ! confirm_action "Configure Laravel project?"; then
-        print_status "Skipping project configuration..."
+    if ! confirm_action "Clone Laravel project from repository?"; then
+        print_status "Skipping project cloning..."
         return 0
     fi
     
@@ -369,14 +407,6 @@ step_configure_project() {
     run_with_sudo chown -R www-data: /var/www/
     run_with_sudo apt-get install -y acl
     run_with_sudo setfacl -R -m u:$(whoami):rwx /var/www
-    
-    print_status "Configuring Apache virtual host..."
-    run_with_sudo cp ./data/000-default.conf /etc/apache2/sites-available/${domain}.conf
-    run_with_sudo sed -i "s/__DOMAIN__/${domain}/g" /etc/apache2/sites-available/${domain}.conf
-    run_with_sudo sed -i "s/__CONTACT__/${contact}/g" /etc/apache2/sites-available/${domain}.conf
-    
-    print_status "Enabling site..."
-    run_with_sudo a2ensite ${domain}
     
     print_status "Adding GitHub to known hosts..."
     ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null || true
@@ -394,7 +424,34 @@ step_configure_project() {
         run_with_sudo git config --global --add safe.directory "$project_dir"
     fi
     
+    print_status "Project cloning completed!"
+}
+
+# Step 6: Configure Laravel project
+step_configure_project() {
+    print_step "Configuring Laravel project..."
+    
+    if ! confirm_action "Configure Laravel project?"; then
+        print_status "Skipping project configuration..."
+        return 0
+    fi
+    
+    local project_dir="/var/www/${domain}"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found. Please clone the project first."
+        return 1
+    fi
+    
     cd "$project_dir"
+    
+    print_status "Configuring Apache virtual host..."
+    run_with_sudo cp ${SCRIPT_DIR}/data/000-default.conf /etc/apache2/sites-available/${domain}.conf
+    run_with_sudo sed -i "s/__DOMAIN__/${domain}/g" /etc/apache2/sites-available/${domain}.conf
+    run_with_sudo sed -i "s/__CONTACT__/${contact}/g" /etc/apache2/sites-available/${domain}.conf
+    
+    print_status "Enabling site..."
+    run_with_sudo a2ensite ${domain}
     
     print_status "Configuring Laravel environment..."
     cp ./.env.example ./.env
@@ -567,6 +624,341 @@ step_install_traccar() {
     print_warning "  PORT 8082 UDP OUTBOUND"
 }
 
+# Docker Step 2: Install Docker and Docker Compose
+step_install_docker() {
+    print_step "Installing Docker and Docker Compose..."
+    
+    if ! confirm_action "Install Docker and Docker Compose?"; then
+        print_status "Skipping Docker installation..."
+        return 0
+    fi
+    
+    # Check if Docker is already installed
+    if command_exists docker; then
+        print_status "Docker is already installed."
+    else
+        print_status "Installing Docker..."
+        run_with_sudo apt-get update
+        run_with_sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+        
+        # Add Docker's official GPG key
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | run_with_sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+        
+        # Add Docker repository
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | run_with_sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        
+        # Install Docker
+        run_with_sudo apt-get update
+        run_with_sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+        
+        # Add user to docker group
+        run_with_sudo usermod -aG docker $(whoami)
+        
+        print_status "Docker installed successfully!"
+    fi
+    
+    # Check if Docker Compose is installed
+    if command_exists docker-compose || docker compose version >/dev/null 2>&1; then
+        print_status "Docker Compose is already installed."
+    else
+        print_status "Installing Docker Compose..."
+        run_with_sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        run_with_sudo chmod +x /usr/local/bin/docker-compose
+        
+        print_status "Docker Compose installed successfully!"
+    fi
+    
+    # Start and enable Docker
+    run_with_sudo systemctl start docker
+    run_with_sudo systemctl enable docker
+    
+    print_status "Docker installation completed!"
+    print_warning "You may need to log out and log back in for Docker group changes to take effect."
+}
+
+# Docker Step 4: Clone Laravel project for Docker
+step_clone_project_docker() {
+    print_step "Cloning Laravel project for Docker deployment..."
+    
+    if ! confirm_action "Clone Laravel project from repository?"; then
+        print_status "Skipping project cloning..."
+        return 0
+    fi
+    
+    print_status "Adding GitHub to known hosts..."
+    ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+    
+    # Clone repository to a temporary directory first
+    local temp_dir="/tmp/cls-temp"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ -d "$temp_dir" ]; then
+        rm -rf "$temp_dir"
+    fi
+    
+    print_status "Cloning repository to temporary directory..."
+    git clone -b ${branch} ${repo} "$temp_dir"
+    
+    # Move to final location
+    if [ -d "$project_dir" ]; then
+        print_status "Backing up existing project directory..."
+        mv "$project_dir" "${project_dir}.backup.$(date +%s)"
+    fi
+    
+    print_status "Moving project to final location..."
+    mv "$temp_dir" "$project_dir"
+    
+    # Set proper permissions
+    chown -R $(whoami):$(whoami) "$project_dir"
+    chmod -R 755 "$project_dir"
+    
+    print_status "Project cloning completed!"
+}
+
+# Docker Step 5: Configure Docker environment
+step_configure_docker_env() {
+    print_step "Configuring Docker environment..."
+    
+    if ! confirm_action "Configure Docker environment files?"; then
+        print_status "Skipping Docker environment configuration..."
+        return 0
+    fi
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found. Please clone the project first."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    # Create .env file from template
+    if [ ! -f ".env" ]; then
+        if [ -f ".env.docker" ]; then
+            print_status "Creating .env file from Docker template..."
+            cp .env.docker .env
+        else
+            print_error "Docker environment template not found!"
+            return 1
+        fi
+    fi
+    
+    # Update .env with deployment configuration
+    print_status "Updating environment configuration..."
+    sed -i.bak "s/your-domain.com/${domain}/g" .env && rm .env.bak
+    sed -i.bak "s/admin@your-domain.com/${contact}/g" .env && rm .env.bak
+    sed -i.bak "s/cls_database/${db}/g" .env && rm .env.bak
+    sed -i.bak "s/cls_user/${user}/g" .env && rm .env.bak
+    sed -i.bak "s/your_secure_password/${pass}/g" .env && rm .env.bak
+    sed -i.bak "s/your_root_password/${pass}/g" .env && rm .env.bak
+    
+    print_status "Docker environment configuration completed!"
+    print_warning "Please review and edit .env file if needed:"
+    print_status "File location: ${project_dir}/.env"
+}
+
+# Docker Step 6: Deploy with Docker
+step_deploy_docker() {
+    print_step "Deploying with Docker..."
+    
+    if ! confirm_action "Deploy CLS application using Docker?"; then
+        print_status "Skipping Docker deployment..."
+        return 0
+    fi
+    
+    # Check if Docker is installed and running
+    if ! command_exists docker; then
+        print_error "Docker is not installed. Please install Docker first."
+        return 1
+    fi
+    
+    if ! docker info >/dev/null 2>&1; then
+        print_error "Docker is not running. Please start Docker first."
+        return 1
+    fi
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found. Please clone the project first."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    # Ask for deployment mode
+    echo ""
+    echo "Select Docker deployment mode:"
+    echo "  1) Development (with Mailhog for email testing)"
+    echo "  2) Production (with SSL and Nginx)"
+    echo "  3) With Traccar GPS service"
+    echo "  4) Basic (just application, database, and Redis)"
+    
+    read -p "Enter choice (1-4): " docker_choice
+    
+    case $docker_choice in
+        1)
+            print_status "Starting in development mode..."
+            if command_exists docker-compose; then
+                COMPOSE_PROFILES=development docker-compose up -d --build
+            else
+                COMPOSE_PROFILES=development docker compose up -d --build
+            fi
+            ;;
+        2)
+            print_status "Starting in production mode..."
+            if command_exists docker-compose; then
+                COMPOSE_PROFILES=production docker-compose up -d --build
+            else
+                COMPOSE_PROFILES=production docker compose up -d --build
+            fi
+            ;;
+        3)
+            print_status "Starting with Traccar service..."
+            if command_exists docker-compose; then
+                COMPOSE_PROFILES=traccar docker-compose up -d --build
+            else
+                COMPOSE_PROFILES=traccar docker compose up -d --build
+            fi
+            ;;
+        4)
+            print_status "Starting basic services..."
+            if command_exists docker-compose; then
+                docker-compose up -d --build
+            else
+                docker compose up -d --build
+            fi
+            ;;
+        *)
+            print_error "Invalid choice"
+            return 1
+            ;;
+    esac
+    
+    print_status "Docker deployment completed!"
+    print_status "Application should be available at: http://localhost:8080"
+    print_status "Database is available at: localhost:3306"
+    print_status "Redis is available at: localhost:6379"
+    
+    if [ "$docker_choice" = "1" ]; then
+        print_status "Mailhog UI: http://localhost:8025"
+    fi
+    
+    if [ "$docker_choice" = "3" ]; then
+        print_status "Traccar GPS: http://localhost:8082"
+    fi
+    
+    print_status "Use './deploy_docker.sh' for Docker management commands"
+}
+
+# Function to run normal deployment
+run_normal_deployment() {
+    while true; do
+        show_normal_menu
+        read -p "Select an option: " choice
+        
+        case $choice in
+            1) step_update_system ;;
+            2) step_install_services ;;
+            3) step_setup_ssh ;;
+            4) step_configure_database ;;
+            5) step_clone_project ;;
+            6) step_configure_project ;;
+            7) step_setup_ssl ;;
+            8) step_setup_backup_cron ;;
+            9) step_setup_update_cron ;;
+            10) step_install_traccar ;;
+            a|A) 
+                print_status "Running all normal deployment steps..."
+                step_update_system
+                step_install_services
+                step_setup_ssh
+                step_configure_database
+                step_clone_project
+                step_configure_project
+                step_setup_ssl
+                step_setup_backup_cron
+                step_setup_update_cron
+                print_status "All normal deployment steps completed!"
+                break
+                ;;
+            s|S)
+                read -p "Enter step number to skip to (1-10): " skip_to
+                case $skip_to in
+                    1) step_update_system ;;
+                    2) step_install_services ;;
+                    3) step_setup_ssh ;;
+                    4) step_configure_database ;;
+                    5) step_clone_project ;;
+                    6) step_configure_project ;;
+                    7) step_setup_ssl ;;
+                    8) step_setup_backup_cron ;;
+                    9) step_setup_update_cron ;;
+                    10) step_install_traccar ;;
+                    *) print_error "Invalid step number" ;;
+                esac
+                ;;
+            b|B) return 0 ;;
+            q|Q) exit 0 ;;
+            *) print_error "Invalid option. Please try again." ;;
+        esac
+        
+        if [ "$choice" != "a" ] && [ "$choice" != "A" ] && [ "$choice" != "b" ] && [ "$choice" != "B" ]; then
+            read -p "Press Enter to continue..."
+        fi
+    done
+}
+
+# Function to run Docker deployment
+run_docker_deployment() {
+    while true; do
+        show_docker_menu
+        read -p "Select an option: " choice
+        
+        case $choice in
+            1) step_update_system ;;
+            2) step_install_docker ;;
+            3) step_setup_ssh ;;
+            4) step_clone_project_docker ;;
+            5) step_configure_docker_env ;;
+            6) step_deploy_docker ;;
+            7) step_install_traccar ;;
+            a|A) 
+                print_status "Running all Docker deployment steps..."
+                step_update_system
+                step_install_docker
+                step_setup_ssh
+                step_clone_project_docker
+                step_configure_docker_env
+                step_deploy_docker
+                print_status "All Docker deployment steps completed!"
+                break
+                ;;
+            s|S)
+                read -p "Enter step number to skip to (1-7): " skip_to
+                case $skip_to in
+                    1) step_update_system ;;
+                    2) step_install_docker ;;
+                    3) step_setup_ssh ;;
+                    4) step_clone_project_docker ;;
+                    5) step_configure_docker_env ;;
+                    6) step_deploy_docker ;;
+                    7) step_install_traccar ;;
+                    *) print_error "Invalid step number" ;;
+                esac
+                ;;
+            b|B) return 0 ;;
+            q|Q) exit 0 ;;
+            *) print_error "Invalid option. Please try again." ;;
+        esac
+        
+        if [ "$choice" != "a" ] && [ "$choice" != "A" ] && [ "$choice" != "b" ] && [ "$choice" != "B" ]; then
+            read -p "Press Enter to continue..."
+        fi
+    done
+}
+
 # Main execution function
 main() {
     # Check if .env file exists and is valid
@@ -581,46 +973,17 @@ main() {
     
     # Main interactive loop
     while true; do
-        show_menu
-        read -p "Select an option: " choice
+        show_initial_choice
+        read -p "Select deployment method: " choice
         
         case $choice in
-            1) step_update_system ;;
-            2) step_install_services ;;
-            3) step_setup_ssh ;;
-            4) step_configure_database ;;
-            5) step_configure_project ;;
-            6) step_setup_ssl ;;
-            7) step_setup_backup_cron ;;
-            8) step_setup_update_cron ;;
-            9) step_install_traccar ;;
-            a|A) 
-                print_status "Running all steps..."
-                step_update_system
-                step_install_services
-                step_setup_ssh
-                step_configure_database
-                step_configure_project
-                step_setup_ssl
-                step_setup_backup_cron
-                step_setup_update_cron
-                print_status "All steps completed!"
-                break
+            1) 
+                print_status "Starting normal deployment..."
+                run_normal_deployment
                 ;;
-            s|S)
-                read -p "Enter step number to skip to (1-9): " skip_to
-                case $skip_to in
-                    1) step_update_system ;;
-                    2) step_install_services ;;
-                    3) step_setup_ssh ;;
-                    4) step_configure_database ;;
-                    5) step_configure_project ;;
-                    6) step_setup_ssl ;;
-                    7) step_setup_backup_cron ;;
-                    8) step_setup_update_cron ;;
-                    9) step_install_traccar ;;
-                    *) print_error "Invalid step number" ;;
-                esac
+            2) 
+                print_status "Starting Docker deployment..."
+                run_docker_deployment
                 ;;
             q|Q)
                 print_status "Exiting..."
@@ -630,10 +993,6 @@ main() {
                 print_error "Invalid option. Please try again."
                 ;;
         esac
-        
-        if [ "$choice" != "a" ] && [ "$choice" != "A" ]; then
-            read -p "Press Enter to continue..."
-        fi
     done
 }
 

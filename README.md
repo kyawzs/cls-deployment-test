@@ -63,19 +63,30 @@ branch=main
 traccar_installer=https://github.com/traccar/traccar/releases/download/v5.8/traccar-linux-5.8.zip
 ```
 
-## 🎯 Available Steps
+## 🎯 **Deployment Methods**
 
-The interactive script provides the following steps:
+The script offers two deployment methods:
 
-1. **Update System Packages** - Updates Ubuntu packages
-2. **Install Services** - Installs Apache, MySQL, PHP, and dependencies
-3. **Setup SSH Keys** - Configures SSH keys for Git access
-4. **Configure Database** - Creates database and user
-5. **Configure Laravel Project** - Clones and configures the Laravel application
-6. **Setup SSL Certificate** - Configures Let's Encrypt SSL
-7. **Setup Backup Cron Jobs** - Configures automated backups
-8. **Setup Update Cron Job** - Configures automated system updates
-9. **Install Traccar Server** - Installs Traccar GPS tracking server
+### **1. Normal Deployment (Apache + MySQL on host)**
+- **Step 1**: Update system packages
+- **Step 2**: Install Apache, MySQL, PHP, and dependencies
+- **Step 3**: Setup SSH keys
+- **Step 4**: Configure database
+- **Step 5**: Clone Laravel project
+- **Step 6**: Configure Laravel project
+- **Step 7**: Setup SSL certificate
+- **Step 8**: Setup backup and maintenance cron jobs
+- **Step 9**: Setup server update cron job
+- **Step 10**: Install Traccar server
+
+### **2. Docker Deployment (Containerized)**
+- **Step 1**: Update system packages
+- **Step 2**: Install Docker and Docker Compose
+- **Step 3**: Setup SSH keys
+- **Step 4**: Clone Laravel project
+- **Step 5**: Configure Docker environment
+- **Step 6**: Deploy with Docker
+- **Step 7**: Setup Traccar service (optional)
 
 ## 🔧 Usage Options
 
