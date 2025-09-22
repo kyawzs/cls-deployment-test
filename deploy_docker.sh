@@ -362,11 +362,11 @@ show_menu() {
     echo "  1) Setup SSH keys"
     echo "  2) Clone Laravel project"
     echo "  3) Create Docker environment"
-    echo "  4) Build and start all services"
-    echo "  5) Start services (if already built)"
+    echo "  4) Pull and start all services"
+    echo "  5) Start services (if already pulled)"
     echo "  6) Stop all services"
     echo "  7) Restart all services"
-    echo "  8) Rebuild and restart"
+    echo "  8) Pull and restart"
     echo "  9) View logs"
     echo "  10) Access application shell"
     echo "  11) Access database shell"
@@ -426,9 +426,9 @@ step_create_docker_env() {
     create_docker_env
 }
 
-# Function to build and start services
-build_and_start() {
-    print_step "Building and starting CLS Docker services..."
+# Function to pull and start services
+pull_and_start() {
+    print_step "Pulling and starting CLS Docker services..."
     
     local project_dir="${SCRIPT_DIR}/cls"
     
@@ -439,11 +439,13 @@ build_and_start() {
     
     cd "$project_dir"
     
-    # Build and start services
+    # Pull and start services
     if command_exists docker-compose; then
-        docker-compose up -d --build
+        docker-compose pull
+        docker-compose up -d
     else
-        docker compose up -d --build
+        docker compose pull
+        docker compose up -d
     fi
     
     print_status "Services started successfully!"
@@ -518,9 +520,9 @@ restart_services() {
     print_status "Services restarted successfully!"
 }
 
-# Function to rebuild and restart
-rebuild_restart() {
-    print_step "Rebuilding and restarting CLS Docker services..."
+# Function to pull and restart
+pull_restart() {
+    print_step "Pulling and restarting CLS Docker services..."
     
     local project_dir="${SCRIPT_DIR}/cls"
     
@@ -533,13 +535,15 @@ rebuild_restart() {
     
     if command_exists docker-compose; then
         docker-compose down
-        docker-compose up -d --build --force-recreate
+        docker-compose pull
+        docker-compose up -d --force-recreate
     else
         docker compose down
-        docker compose up -d --build --force-recreate
+        docker compose pull
+        docker compose up -d --force-recreate
     fi
     
-    print_status "Services rebuilt and restarted successfully!"
+    print_status "Services pulled and restarted successfully!"
 }
 
 # Function to view logs
@@ -663,9 +667,11 @@ development_mode() {
     cd "$project_dir"
     
     if command_exists docker-compose; then
-        COMPOSE_PROFILES=development docker-compose up -d --build
+        COMPOSE_PROFILES=development docker-compose pull
+        COMPOSE_PROFILES=development docker-compose up -d
     else
-        COMPOSE_PROFILES=development docker compose up -d --build
+        COMPOSE_PROFILES=development docker compose pull
+        COMPOSE_PROFILES=development docker compose up -d
     fi
     
     print_status "Development services started!"
@@ -687,9 +693,11 @@ production_mode() {
     cd "$project_dir"
     
     if command_exists docker-compose; then
-        COMPOSE_PROFILES=production docker-compose up -d --build
+        COMPOSE_PROFILES=production docker-compose pull
+        COMPOSE_PROFILES=production docker-compose up -d
     else
-        COMPOSE_PROFILES=production docker compose up -d --build
+        COMPOSE_PROFILES=production docker compose pull
+        COMPOSE_PROFILES=production docker compose up -d
     fi
     
     print_status "Production services started!"
@@ -710,9 +718,11 @@ include_traccar() {
     cd "$project_dir"
     
     if command_exists docker-compose; then
-        COMPOSE_PROFILES=traccar docker-compose up -d --build
+        COMPOSE_PROFILES=traccar docker-compose pull
+        COMPOSE_PROFILES=traccar docker-compose up -d
     else
-        COMPOSE_PROFILES=traccar docker compose up -d --build
+        COMPOSE_PROFILES=traccar docker compose pull
+        COMPOSE_PROFILES=traccar docker compose up -d
     fi
     
     print_status "Services with Traccar started!"
@@ -734,11 +744,11 @@ main() {
             1) step_setup_ssh ;;
             2) step_clone_project ;;
             3) step_create_docker_env ;;
-            4) build_and_start ;;
+            4) pull_and_start ;;
             5) start_services ;;
             6) stop_services ;;
             7) restart_services ;;
-            8) rebuild_restart ;;
+            8) pull_restart ;;
             9) view_logs ;;
             10) access_shell ;;
             11) access_database ;;
