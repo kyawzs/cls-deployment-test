@@ -362,15 +362,16 @@ show_menu() {
     echo "  1) Setup SSH keys"
     echo "  2) Clone Laravel project"
     echo "  3) Create Docker environment"
-    echo "  4) Pull and start all services"
-    echo "  5) Start services (if already pulled)"
-    echo "  6) Stop all services"
-    echo "  7) Restart all services"
-    echo "  8) Pull and restart"
-    echo "  9) View logs"
-    echo "  10) Access application shell"
-    echo "  11) Access database shell"
-    echo "  12) Clean up (remove containers and volumes)"
+    echo "  4) Pull and start all services (with Nginx)"
+    echo "  5) Pull and start services (without Nginx)"
+    echo "  6) Start services (if already pulled)"
+    echo "  7) Stop all services"
+    echo "  8) Restart all services"
+    echo "  9) Pull and restart"
+    echo "  10) View logs"
+    echo "  11) Access application shell"
+    echo "  12) Access database shell"
+    echo "  13) Clean up (remove containers and volumes)"
     echo "  d) Development mode (with Mailhog)"
     echo "  p) Production mode (with SSL)"
     echo "  t) Include Traccar service"
@@ -449,6 +450,63 @@ pull_and_start() {
     fi
     
     print_status "Services started successfully!"
+    print_status "Application should be available at: http://localhost:8080"
+    print_status "Database is available at: localhost:3306"
+    print_status "Redis is available at: localhost:6379"
+}
+
+# Function to pull and start services with Nginx
+pull_and_start_with_nginx() {
+    print_step "Pulling and starting CLS Docker services with Nginx proxy..."
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found. Please clone the project first."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    # Pull and start services with Nginx
+    if command_exists docker-compose; then
+        docker-compose pull
+        docker-compose --profile nginx up -d
+    else
+        docker compose pull
+        docker compose --profile nginx up -d
+    fi
+    
+    print_status "Services started successfully with Nginx!"
+    print_status "Application should be available at: http://localhost:80"
+    print_status "HTTPS should be available at: https://localhost:443"
+    print_status "Database is available at: localhost:3306"
+    print_status "Redis is available at: localhost:6379"
+}
+
+# Function to pull and start services without Nginx
+pull_and_start_without_nginx() {
+    print_step "Pulling and starting CLS Docker services without Nginx proxy..."
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found. Please clone the project first."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    # Pull and start services without Nginx
+    if command_exists docker-compose; then
+        docker-compose pull
+        docker-compose --profile app up -d
+    else
+        docker compose pull
+        docker compose --profile app up -d
+    fi
+    
+    print_status "Services started successfully without Nginx!"
     print_status "Application should be available at: http://localhost:8080"
     print_status "Database is available at: localhost:3306"
     print_status "Redis is available at: localhost:6379"
@@ -744,15 +802,16 @@ main() {
             1) step_setup_ssh ;;
             2) step_clone_project ;;
             3) step_create_docker_env ;;
-            4) pull_and_start ;;
-            5) start_services ;;
-            6) stop_services ;;
-            7) restart_services ;;
-            8) pull_restart ;;
-            9) view_logs ;;
-            10) access_shell ;;
-            11) access_database ;;
-            12) cleanup ;;
+            4) pull_and_start_with_nginx ;;
+            5) pull_and_start_without_nginx ;;
+            6) start_services ;;
+            7) stop_services ;;
+            8) restart_services ;;
+            9) pull_restart ;;
+            10) view_logs ;;
+            11) access_shell ;;
+            12) access_database ;;
+            13) cleanup ;;
             d|D) development_mode ;;
             p|P) production_mode ;;
             t|T) include_traccar ;;
