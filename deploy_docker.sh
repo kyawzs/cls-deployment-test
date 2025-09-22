@@ -879,6 +879,15 @@ debug_container_user() {
     
     print_status "Container process information:"
     docker exec cls-app ps aux | head -10
+    
+    print_status "Apache2 commands available:"
+    docker exec cls-app which apache2-foreground apachectl httpd 2>/dev/null || true
+    
+    print_status "Apache2 files in /usr/sbin:"
+    docker exec cls-app ls -la /usr/sbin/apache* /usr/sbin/httpd* 2>/dev/null || true
+    
+    print_status "Apache2 service status:"
+    docker exec cls-app service apache2 status 2>/dev/null || true
 }
 
 # Function to run in development mode
