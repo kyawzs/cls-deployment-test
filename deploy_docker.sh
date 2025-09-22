@@ -372,6 +372,7 @@ show_menu() {
     echo "  11) Access application shell"
     echo "  12) Access database shell"
     echo "  13) Clean up (remove containers and volumes)"
+    echo "  14) Reset MySQL database (clean volumes)"
     echo "  d) Development mode (with Mailhog)"
     echo "  p) Production mode (with SSL)"
     echo "  t) Include Traccar service"
@@ -711,6 +712,57 @@ cleanup() {
     fi
 }
 
+# Function to reset MySQL database
+reset_mysql() {
+    print_step "Resetting MySQL database..."
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    print_warning "This will remove all MySQL data and volumes. Are you sure?"
+    read -p "Type 'yes' to confirm: " confirm
+    
+    if [ "$confirm" = "yes" ]; then
+        print_status "Stopping MySQL container..."
+        if command_exists docker-compose; then
+            docker-compose stop mysql-db
+        else
+            docker compose stop mysql-db
+        fi
+        
+        print_status "Removing MySQL volumes..."
+        if command_exists docker-compose; then
+            docker-compose rm -f -v mysql-db
+        else
+            docker compose rm -f -v mysql-db
+        fi
+        
+        print_status "Removing MySQL data volume..."
+        docker volume rm cls_mysql_data 2>/dev/null || true
+        
+        print_status "Starting MySQL with fresh data..."
+        if command_exists docker-compose; then
+            docker-compose up -d mysql-db
+        else
+            docker compose up -d mysql-db
+        fi
+        
+        print_status "Waiting for MySQL to initialize..."
+        sleep 30
+        
+        print_status "MySQL database reset completed!"
+        print_status "You may need to run database migrations again."
+    else
+        print_status "MySQL reset cancelled."
+    fi
+}
+
 # Function to run in development mode
 development_mode() {
     print_step "Starting in development mode with Mailhog..."
@@ -812,6 +864,7 @@ main() {
             11) access_shell ;;
             12) access_database ;;
             13) cleanup ;;
+            14) reset_mysql ;;
             d|D) development_mode ;;
             p|P) production_mode ;;
             t|T) include_traccar ;;
