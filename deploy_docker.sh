@@ -38,6 +38,85 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Function to detect SSH key files dynamically
+detect_ssh_key() {
+    local ssh_dir="$HOME/.ssh"
+    local key_file=""
+    
+    if [ ! -d "$ssh_dir" ]; then
+        return 1
+    fi
+    
+    # Look for common SSH key patterns
+    for pattern in "id_rsa.pub" "id_ed25519.pub" "id_ecdsa.pub" "id_dsa.pub"; do
+        if [ -f "$ssh_dir/$pattern" ]; then
+            key_file="$ssh_dir/$pattern"
+            break
+        fi
+    done
+    
+    # If no standard key found, look for any .pub file
+    if [ -z "$key_file" ]; then
+        key_file=$(find "$ssh_dir" -name "*.pub" -type f | head -n 1)
+    fi
+    
+    if [ -n "$key_file" ] && [ -f "$key_file" ]; then
+        echo "$key_file"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to generate SSH key if none exists
+generate_ssh_key() {
+    local ssh_dir="$HOME/.ssh"
+    
+    if [ ! -d "$ssh_dir" ]; then
+        mkdir -p "$ssh_dir"
+        chmod 700 "$ssh_dir"
+    fi
+    
+    print_status "Generating new SSH key..."
+    
+    # Check if expect is available for interactive key generation
+    if command_exists expect; then
+        # Use expect for interactive key generation
+        expect << EOF
+spawn ssh-keygen -t ed25519 -f "$ssh_dir/id_ed25519" -C "$(whoami)@$(hostname)"
+expect "Enter passphrase (empty for no passphrase):"
+send "\r"
+expect "Enter same passphrase again:"
+send "\r"
+expect eof
+EOF
+    else
+        # Fallback: try to generate with empty passphrase
+        print_status "Installing expect for SSH key generation..."
+        sudo apt install -y expect
+        
+        expect << EOF
+spawn ssh-keygen -t ed25519 -f "$ssh_dir/id_ed25519" -C "$(whoami)@$(hostname)"
+expect "Enter passphrase (empty for no passphrase):"
+send "\r"
+expect "Enter same passphrase again:"
+send "\r"
+expect eof
+EOF
+    fi
+    
+    # Verify the key was created
+    if [ -f "$ssh_dir/id_ed25519.pub" ]; then
+        print_status "SSH key generated successfully"
+    else
+        print_error "Failed to generate SSH key"
+        return 1
+    fi
+    
+    # Return the generated key file
+    echo "$ssh_dir/id_ed25519.pub"
+}
+
 # Function to check environment file
 check_env_file() {
     if [ ! -f ".env" ]; then
@@ -92,6 +171,42 @@ branch=main
 traccar_installer=https://github.com/traccar/traccar/releases/download/v5.8/traccar-linux-5.8.zip
 EOF
     chmod 600 .env
+}
+
+# Function to setup SSH keys
+setup_ssh_keys() {
+    print_step "Setting up SSH keys..."
+    
+    # Add GitHub to known hosts
+    print_status "Adding GitHub to known hosts..."
+    ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+    
+    # Detect existing SSH key
+    local ssh_key
+    if ssh_key=$(detect_ssh_key); then
+        print_status "Found existing SSH key: $ssh_key"
+        echo ""
+        print_status "Your public SSH key:"
+        cat "$ssh_key"
+        echo ""
+        print_warning "Please add this key to your GitHub repository deployment keys if not already done."
+    else
+        print_status "No SSH key found. Generating new key..."
+        ssh_key=$(generate_ssh_key)
+        print_status "Generated new SSH key: $ssh_key"
+        echo ""
+        print_status "Your public SSH key:"
+        cat "$ssh_key"
+        echo ""
+        print_warning "Please add this key to your GitHub repository deployment keys."
+    fi
+    
+    if ! confirm_action "Have you added the SSH key to your repository?"; then
+        print_warning "Please add the SSH key to your repository and run this step again."
+        return 1
+    fi
+    
+    print_status "SSH setup completed!"
 }
 
 # Function to clone Laravel project
@@ -244,17 +359,18 @@ show_menu() {
     echo "  Branch: ${branch:-'Not set'}"
     echo ""
     echo "Available options:"
-    echo "  1) Clone Laravel project"
-    echo "  2) Create Docker environment"
-    echo "  3) Build and start all services"
-    echo "  4) Start services (if already built)"
-    echo "  5) Stop all services"
-    echo "  6) Restart all services"
-    echo "  7) Rebuild and restart"
-    echo "  8) View logs"
-    echo "  9) Access application shell"
-    echo "  10) Access database shell"
-    echo "  11) Clean up (remove containers and volumes)"
+    echo "  1) Setup SSH keys"
+    echo "  2) Clone Laravel project"
+    echo "  3) Create Docker environment"
+    echo "  4) Build and start all services"
+    echo "  5) Start services (if already built)"
+    echo "  6) Stop all services"
+    echo "  7) Restart all services"
+    echo "  8) Rebuild and restart"
+    echo "  9) View logs"
+    echo "  10) Access application shell"
+    echo "  11) Access database shell"
+    echo "  12) Clean up (remove containers and volumes)"
     echo "  d) Development mode (with Mailhog)"
     echo "  p) Production mode (with SSL)"
     echo "  t) Include Traccar service"
@@ -272,6 +388,18 @@ confirm_action() {
     else
         return 1
     fi
+}
+
+# Function to setup SSH keys
+step_setup_ssh() {
+    print_step "Setting up SSH keys..."
+    
+    if ! confirm_action "Setup SSH keys for Git access?"; then
+        print_status "Skipping SSH setup..."
+        return 0
+    fi
+    
+    setup_ssh_keys
 }
 
 # Function to clone project
@@ -603,17 +731,18 @@ main() {
         read -p "Select an option: " choice
         
         case $choice in
-            1) step_clone_project ;;
-            2) step_create_docker_env ;;
-            3) build_and_start ;;
-            4) start_services ;;
-            5) stop_services ;;
-            6) restart_services ;;
-            7) rebuild_restart ;;
-            8) view_logs ;;
-            9) access_shell ;;
-            10) access_database ;;
-            11) cleanup ;;
+            1) step_setup_ssh ;;
+            2) step_clone_project ;;
+            3) step_create_docker_env ;;
+            4) build_and_start ;;
+            5) start_services ;;
+            6) stop_services ;;
+            7) restart_services ;;
+            8) rebuild_restart ;;
+            9) view_logs ;;
+            10) access_shell ;;
+            11) access_database ;;
+            12) cleanup ;;
             d|D) development_mode ;;
             p|P) production_mode ;;
             t|T) include_traccar ;;
