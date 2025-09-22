@@ -375,6 +375,7 @@ show_menu() {
     echo "  14) Reset MySQL database (clean volumes)"
     echo "  15) Complete reset (clean everything)"
     echo "  16) Reinitialize application (run setup tasks)"
+    echo "  17) Debug container user info"
     echo "  d) Development mode (with Mailhog)"
     echo "  p) Production mode (with SSL)"
     echo "  t) Include Traccar service"
@@ -703,9 +704,9 @@ cleanup() {
     
     if [ "$confirm" = "yes" ]; then
         if command_exists docker-compose; then
-            docker-compose down -v --rmi all
+            docker-compose down -v 
         else
-            docker compose down -v --rmi all
+            docker compose down -v 
         fi
         
         print_status "Cleanup completed!"
@@ -849,6 +850,37 @@ reinitialize_app() {
     fi
 }
 
+# Function to debug container user info
+debug_container_user() {
+    print_step "Debugging container user information..."
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    print_status "Checking if cls-app container is running..."
+    if ! docker ps | grep -q "cls-app"; then
+        print_error "cls-app container is not running. Please start it first."
+        return 1
+    fi
+    
+    print_status "Container user information:"
+    docker exec cls-app whoami
+    docker exec cls-app id
+    docker exec cls-app cat /etc/passwd | grep -E "(www-data|apache|appuser|root)" || print_warning "No standard web users found"
+    
+    print_status "Container file permissions:"
+    docker exec cls-app ls -la /var/www/html/
+    
+    print_status "Container process information:"
+    docker exec cls-app ps aux | head -10
+}
+
 # Function to run in development mode
 development_mode() {
     print_step "Starting in development mode with Mailhog..."
@@ -953,6 +985,7 @@ main() {
             14) reset_mysql ;;
             15) complete_reset ;;
             16) reinitialize_app ;;
+            17) debug_container_user ;;
             d|D) development_mode ;;
             p|P) production_mode ;;
             t|T) include_traccar ;;
