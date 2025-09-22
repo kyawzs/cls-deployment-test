@@ -82,7 +82,7 @@ generate_ssh_key() {
     # Check if expect is available for interactive key generation
     if command_exists expect; then
         # Use expect for interactive key generation
-        expect << EOF
+        expect >/dev/null 2>&1 << EOF
 spawn ssh-keygen -t ed25519 -f "$ssh_dir/id_ed25519" -C "$(whoami)@$(hostname)"
 expect "Enter passphrase (empty for no passphrase):"
 send "\r"
@@ -93,9 +93,9 @@ EOF
     else
         # Fallback: try to generate with empty passphrase
         print_status "Installing expect for SSH key generation..."
-        sudo apt install -y expect
+        sudo apt install -y expect >/dev/null 2>&1
         
-        expect << EOF
+        expect >/dev/null 2>&1 << EOF
 spawn ssh-keygen -t ed25519 -f "$ssh_dir/id_ed25519" -C "$(whoami)@$(hostname)"
 expect "Enter passphrase (empty for no passphrase):"
 send "\r"
