@@ -38,70 +38,223 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Function to check prerequisites
-check_prerequisites() {
-    print_step "Checking prerequisites..."
-    
-    # Check if Docker is installed
-    if ! command_exists docker; then
-        print_error "Docker is not installed. Please install Docker first."
+# Function to check environment file
+check_env_file() {
+    if [ ! -f ".env" ]; then
+        print_error ".env file not found!"
+        print_status "Creating .env template file..."
+        create_env_template
+        print_warning "Please edit .env file with your configuration before running the script again."
         exit 1
     fi
     
-    # Check if Docker Compose is installed
-    if ! command_exists docker-compose && ! docker compose version >/dev/null 2>&1; then
-        print_error "Docker Compose is not installed. Please install Docker Compose first."
+    # Source the environment file
+    source .env
+    
+    # Validate required variables
+    local required_vars=("domain" "db" "user" "pass" "contact" "repo" "branch")
+    local missing_vars=()
+    
+    for var in "${required_vars[@]}"; do
+        if [ -z "${!var}" ]; then
+            missing_vars+=("$var")
+        fi
+    done
+    
+    if [ ${#missing_vars[@]} -ne 0 ]; then
+        print_error "Missing required environment variables: ${missing_vars[*]}"
+        print_warning "Please check your .env file and ensure all required variables are set."
         exit 1
     fi
-    
-    # Check if Docker is running
-    if ! docker info >/dev/null 2>&1; then
-        print_error "Docker is not running. Please start Docker first."
-        exit 1
-    fi
-    
-    print_status "Prerequisites check passed!"
 }
 
-# Function to create environment file
-create_env_file() {
-    print_step "Setting up environment configuration..."
+# Function to create .env template
+create_env_template() {
+    cat > .env << 'EOF'
+# CLS Deployment Configuration
+# Please update these values according to your setup
+
+# Domain configuration
+domain=your-domain.com
+contact=admin@your-domain.com
+
+# Database configuration
+db=cls_database
+user=cls_user
+pass=your_secure_password
+db_host=localhost
+
+# Git repository configuration
+repo=https://github.com/your-org/your-repo.git
+branch=main
+
+# Traccar configuration (optional)
+traccar_installer=https://github.com/traccar/traccar/releases/download/v5.8/traccar-linux-5.8.zip
+EOF
+    chmod 600 .env
+}
+
+# Function to clone Laravel project
+clone_project() {
+    print_step "Cloning Laravel project..."
     
-    local env_file="${SCRIPT_DIR}/cls/.env"
-    local env_template="${SCRIPT_DIR}/cls/.env.docker"
+    local project_dir="${SCRIPT_DIR}/cls"
     
-    if [ ! -f "$env_file" ]; then
-        if [ -f "$env_template" ]; then
-            print_status "Creating .env file from template..."
-            cp "$env_template" "$env_file"
-            print_warning "Please edit ${env_file} with your configuration before continuing."
-            read -p "Press Enter after editing the .env file..."
-        else
-            print_error "Environment template not found at ${env_template}"
-            exit 1
-        fi
-    else
-        print_status "Environment file already exists."
+    # Remove existing project directory if it exists
+    if [ -d "$project_dir" ]; then
+        print_status "Removing existing project directory..."
+        rm -rf "$project_dir"
     fi
+    
+    print_status "Adding GitHub to known hosts..."
+    ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+    
+    print_status "Cloning repository..."
+    git clone -b ${branch} ${repo} "$project_dir"
+    
+    # Set proper permissions
+    chown -R $(whoami):$(whoami) "$project_dir"
+    chmod -R 755 "$project_dir"
+    
+    print_status "Project cloned successfully!"
+}
+
+# Function to create Docker environment file
+create_docker_env() {
+    print_step "Creating Docker environment file..."
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found. Please clone the project first."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    # Create .env file from Laravel template
+    if [ -f ".env.example" ]; then
+        print_status "Creating .env from Laravel template..."
+        cp .env.example .env
+    else
+        print_error "Laravel .env.example not found!"
+        return 1
+    fi
+    
+    # Update .env with deployment configuration
+    print_status "Updating environment configuration..."
+    
+    # Update APP_URL
+    sed -i.bak "s|APP_URL=.*|APP_URL=https://${domain}|g" .env && rm .env.bak
+    
+    # Update database configuration
+    sed -i.bak "s/DB_CONNECTION=.*/DB_CONNECTION=mysql/g" .env && rm .env.bak
+    sed -i.bak "s/DB_HOST=.*/DB_HOST=mysql-db/g" .env && rm .env.bak
+    sed -i.bak "s/DB_PORT=.*/DB_PORT=3306/g" .env && rm .env.bak
+    sed -i.bak "s/DB_DATABASE=.*/DB_DATABASE=${db}/g" .env && rm .env.bak
+    sed -i.bak "s/DB_USERNAME=.*/DB_USERNAME=${user}/g" .env && rm .env.bak
+    sed -i.bak "s/DB_PASSWORD=.*/DB_PASSWORD=${pass}/g" .env && rm .env.bak
+    
+    # Update mail configuration
+    sed -i.bak "s/MAIL_FROM_ADDRESS=.*/MAIL_FROM_ADDRESS=${contact}/g" .env && rm .env.bak
+    sed -i.bak "s/MAIL_FROM_NAME=.*/MAIL_FROM_NAME=\"CLS System\"/g" .env && rm .env.bak
+    
+    # Update cache configuration for Redis
+    sed -i.bak "s/CACHE_DRIVER=.*/CACHE_DRIVER=redis/g" .env && rm .env.bak
+    sed -i.bak "s/SESSION_DRIVER=.*/SESSION_DRIVER=redis/g" .env && rm .env.bak
+    sed -i.bak "s/QUEUE_CONNECTION=.*/QUEUE_CONNECTION=redis/g" .env && rm .env.bak
+    
+    # Update Redis configuration
+    sed -i.bak "s/REDIS_HOST=.*/REDIS_HOST=redis/g" .env && rm .env.bak
+    sed -i.bak "s/REDIS_PASSWORD=.*/REDIS_PASSWORD=/g" .env && rm .env.bak
+    sed -i.bak "s/REDIS_PORT=.*/REDIS_PORT=6379/g" .env && rm .env.bak
+    
+    # Create Docker-specific environment file
+    cat > .env.docker << EOF
+# CLS Docker Environment Configuration
+# Generated automatically from deployment configuration
+
+# Application Configuration
+APP_NAME=CLS
+APP_ENV=production
+APP_KEY=
+APP_DEBUG=false
+APP_URL=https://${domain}
+
+# Domain Configuration
+CLS_DOMAIN=${domain}
+CLS_ADMIN_EMAIL=${contact}
+CLS_PORT=8080
+CLS_SSL_PORT=8443
+
+# Database Configuration
+DB_DATABASE=${db}
+DB_USERNAME=${user}
+DB_PASSWORD=${pass}
+MYSQL_ROOT_PASSWORD=${pass}
+MYSQL_PORT=3306
+
+# Redis Configuration
+REDIS_PASSWORD=
+REDIS_PORT=6379
+
+# Cache Configuration
+CACHE_DRIVER=redis
+SESSION_DRIVER=redis
+QUEUE_CONNECTION=redis
+
+# Mail Configuration
+MAIL_MAILER=smtp
+MAIL_HOST=mailhog
+MAIL_PORT=1025
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_ENCRYPTION=
+MAIL_FROM_ADDRESS=${contact}
+MAIL_FROM_NAME=CLS System
+
+# PHP Configuration
+PHP_MEMORY_LIMIT=512M
+PHP_MAX_EXECUTION_TIME=300
+PHP_UPLOAD_MAX_FILESIZE=200M
+PHP_POST_MAX_SIZE=200M
+
+# Traccar Configuration (Optional)
+TRACCAR_DOMAIN=traccar.${domain}
+
+# User Configuration
+USER_ID=1000
+GROUP_ID=1000
+EOF
+    
+    print_status "Docker environment configuration completed!"
 }
 
 # Function to show menu
 show_menu() {
     echo ""
     echo "=========================================="
-    echo "  CLS Docker Deployment Script"
+    echo "  CLS Docker Deployment Management"
     echo "=========================================="
     echo ""
+    echo "Current Configuration:"
+    echo "  Domain: ${domain:-'Not set'}"
+    echo "  Database: ${db:-'Not set'}"
+    echo "  Repository: ${repo:-'Not set'}"
+    echo "  Branch: ${branch:-'Not set'}"
+    echo ""
     echo "Available options:"
-    echo "  1) Build and start all services"
-    echo "  2) Start services (if already built)"
-    echo "  3) Stop all services"
-    echo "  4) Restart all services"
-    echo "  5) Rebuild and restart"
-    echo "  6) View logs"
-    echo "  7) Access application shell"
-    echo "  8) Access database shell"
-    echo "  9) Clean up (remove containers and volumes)"
+    echo "  1) Clone Laravel project"
+    echo "  2) Create Docker environment"
+    echo "  3) Build and start all services"
+    echo "  4) Start services (if already built)"
+    echo "  5) Stop all services"
+    echo "  6) Restart all services"
+    echo "  7) Rebuild and restart"
+    echo "  8) View logs"
+    echo "  9) Access application shell"
+    echo "  10) Access database shell"
+    echo "  11) Clean up (remove containers and volumes)"
     echo "  d) Development mode (with Mailhog)"
     echo "  p) Production mode (with SSL)"
     echo "  t) Include Traccar service"
@@ -109,11 +262,54 @@ show_menu() {
     echo ""
 }
 
+# Function to confirm action
+confirm_action() {
+    local message="$1"
+    read -p "$message (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to clone project
+step_clone_project() {
+    print_step "Cloning Laravel project..."
+    
+    if ! confirm_action "Clone Laravel project from repository?"; then
+        print_status "Skipping project cloning..."
+        return 0
+    fi
+    
+    clone_project
+}
+
+# Function to create Docker environment
+step_create_docker_env() {
+    print_step "Creating Docker environment..."
+    
+    if ! confirm_action "Create Docker environment configuration?"; then
+        print_status "Skipping Docker environment creation..."
+        return 0
+    fi
+    
+    create_docker_env
+}
+
 # Function to build and start services
 build_and_start() {
     print_step "Building and starting CLS Docker services..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found. Please clone the project first."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     # Build and start services
     if command_exists docker-compose; then
@@ -132,7 +328,14 @@ build_and_start() {
 start_services() {
     print_step "Starting CLS Docker services..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found. Please clone the project first."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     if command_exists docker-compose; then
         docker-compose up -d
@@ -147,7 +350,14 @@ start_services() {
 stop_services() {
     print_step "Stopping CLS Docker services..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     if command_exists docker-compose; then
         docker-compose down
@@ -162,7 +372,14 @@ stop_services() {
 restart_services() {
     print_step "Restarting CLS Docker services..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     if command_exists docker-compose; then
         docker-compose restart
@@ -177,7 +394,14 @@ restart_services() {
 rebuild_restart() {
     print_step "Rebuilding and restarting CLS Docker services..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     if command_exists docker-compose; then
         docker-compose down
@@ -194,7 +418,14 @@ rebuild_restart() {
 view_logs() {
     print_step "Viewing CLS Docker logs..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     echo "Select service to view logs:"
     echo "1) Application (cls-app)"
@@ -225,7 +456,14 @@ view_logs() {
 access_shell() {
     print_step "Accessing CLS application shell..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     if command_exists docker-compose; then
         docker-compose exec cls-app bash
@@ -238,7 +476,14 @@ access_shell() {
 access_database() {
     print_step "Accessing MySQL database shell..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     if command_exists docker-compose; then
         docker-compose exec mysql-db mysql -u root -p
@@ -251,7 +496,14 @@ access_database() {
 cleanup() {
     print_step "Cleaning up CLS Docker environment..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     print_warning "This will remove all containers, volumes, and images. Are you sure?"
     read -p "Type 'yes' to confirm: " confirm
@@ -273,7 +525,14 @@ cleanup() {
 development_mode() {
     print_step "Starting in development mode with Mailhog..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found. Please clone the project first."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     if command_exists docker-compose; then
         COMPOSE_PROFILES=development docker-compose up -d --build
@@ -290,7 +549,14 @@ development_mode() {
 production_mode() {
     print_step "Starting in production mode with SSL..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found. Please clone the project first."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     if command_exists docker-compose; then
         COMPOSE_PROFILES=production docker-compose up -d --build
@@ -299,14 +565,21 @@ production_mode() {
     fi
     
     print_status "Production services started!"
-    print_status "Application: https://${CLS_DOMAIN:-localhost}"
+    print_status "Application: https://${domain:-localhost}"
 }
 
 # Function to include Traccar
 include_traccar() {
     print_step "Starting with Traccar GPS service..."
     
-    cd "${SCRIPT_DIR}/cls"
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found. Please clone the project first."
+        return 1
+    fi
+    
+    cd "$project_dir"
     
     if command_exists docker-compose; then
         COMPOSE_PROFILES=traccar docker-compose up -d --build
@@ -321,16 +594,8 @@ include_traccar() {
 
 # Main execution function
 main() {
-    # Check prerequisites
-    check_prerequisites
-    
-    # Create environment file
-    create_env_file
-    
-    # Load environment variables
-    if [ -f "${SCRIPT_DIR}/cls/.env" ]; then
-        source "${SCRIPT_DIR}/cls/.env"
-    fi
+    # Check if .env file exists and is valid
+    check_env_file
     
     # Main interactive loop
     while true; do
@@ -338,15 +603,17 @@ main() {
         read -p "Select an option: " choice
         
         case $choice in
-            1) build_and_start ;;
-            2) start_services ;;
-            3) stop_services ;;
-            4) restart_services ;;
-            5) rebuild_restart ;;
-            6) view_logs ;;
-            7) access_shell ;;
-            8) access_database ;;
-            9) cleanup ;;
+            1) step_clone_project ;;
+            2) step_create_docker_env ;;
+            3) build_and_start ;;
+            4) start_services ;;
+            5) stop_services ;;
+            6) restart_services ;;
+            7) rebuild_restart ;;
+            8) view_logs ;;
+            9) access_shell ;;
+            10) access_database ;;
+            11) cleanup ;;
             d|D) development_mode ;;
             p|P) production_mode ;;
             t|T) include_traccar ;;
