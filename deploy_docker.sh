@@ -374,6 +374,7 @@ show_menu() {
     echo "  13) Clean up (remove containers and volumes)"
     echo "  14) Reset MySQL database (clean volumes)"
     echo "  15) Complete reset (clean everything)"
+    echo "  16) Reinitialize application (run setup tasks)"
     echo "  d) Development mode (with Mailhog)"
     echo "  p) Production mode (with SSL)"
     echo "  t) Include Traccar service"
@@ -813,6 +814,41 @@ complete_reset() {
     fi
 }
 
+# Function to reinitialize application
+reinitialize_app() {
+    print_step "Reinitializing CLS application..."
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    print_status "Removing initialization marker..."
+    docker exec cls-app rm -f /var/www/html/.container-initialized 2>/dev/null || true
+    
+    print_status "Restarting application container..."
+    if command_exists docker-compose; then
+        docker-compose restart cls-app
+    else
+        docker compose restart cls-app
+    fi
+    
+    print_status "Waiting for application to initialize..."
+    sleep 30
+    
+    print_status "Checking application status..."
+    if docker exec cls-app pgrep apache2 > /dev/null 2>&1; then
+        print_status "Application reinitialized successfully!"
+        print_status "You can check the logs with option 10"
+    else
+        print_error "Application failed to start. Check logs with option 10"
+    fi
+}
+
 # Function to run in development mode
 development_mode() {
     print_step "Starting in development mode with Mailhog..."
@@ -916,6 +952,7 @@ main() {
             13) cleanup ;;
             14) reset_mysql ;;
             15) complete_reset ;;
+            16) reinitialize_app ;;
             d|D) development_mode ;;
             p|P) production_mode ;;
             t|T) include_traccar ;;
