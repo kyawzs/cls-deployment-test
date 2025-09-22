@@ -373,6 +373,7 @@ show_menu() {
     echo "  12) Access database shell"
     echo "  13) Clean up (remove containers and volumes)"
     echo "  14) Reset MySQL database (clean volumes)"
+    echo "  15) Complete reset (clean everything)"
     echo "  d) Development mode (with Mailhog)"
     echo "  p) Production mode (with SSL)"
     echo "  t) Include Traccar service"
@@ -746,6 +747,9 @@ reset_mysql() {
         print_status "Removing MySQL data volume..."
         docker volume rm cls_mysql_data 2>/dev/null || true
         
+        print_status "Removing any existing MySQL containers..."
+        docker rm -f cls-mysql 2>/dev/null || true
+        
         print_status "Starting MySQL with fresh data..."
         if command_exists docker-compose; then
             docker-compose up -d mysql-db
@@ -760,6 +764,52 @@ reset_mysql() {
         print_status "You may need to run database migrations again."
     else
         print_status "MySQL reset cancelled."
+    fi
+}
+
+# Function to complete reset everything
+complete_reset() {
+    print_step "Performing complete reset of CLS Docker environment..."
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    print_warning "This will remove ALL containers, volumes, images, and networks. Are you sure?"
+    read -p "Type 'yes' to confirm: " confirm
+    
+    if [ "$confirm" = "yes" ]; then
+        print_status "Stopping all containers..."
+        if command_exists docker-compose; then
+            docker-compose down -v --remove-orphans
+        else
+            docker compose down -v --remove-orphans
+        fi
+        
+        print_status "Removing all containers..."
+        docker container prune -f
+        
+        print_status "Removing all volumes..."
+        docker volume prune -f
+        
+        print_status "Removing all networks..."
+        docker network prune -f
+        
+        print_status "Removing all images..."
+        docker image prune -a -f
+        
+        print_status "Cleaning up system..."
+        docker system prune -a -f --volumes
+        
+        print_status "Complete reset finished!"
+        print_status "You can now start fresh with option 5 (without Nginx) or option 4 (with Nginx)"
+    else
+        print_status "Complete reset cancelled."
     fi
 }
 
@@ -865,6 +915,7 @@ main() {
             12) access_database ;;
             13) cleanup ;;
             14) reset_mysql ;;
+            15) complete_reset ;;
             d|D) development_mode ;;
             p|P) production_mode ;;
             t|T) include_traccar ;;
