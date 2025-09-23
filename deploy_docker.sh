@@ -376,6 +376,8 @@ show_menu() {
     echo "  14) Reset MySQL database (clean volumes)"
     echo "  15) Complete reset (clean everything)"
     echo "  16) Reinitialize application (run setup tasks)"
+    echo "  17) Setup SSL certificates (for nginx proxy)"
+    echo "  18) Renew SSL certificates"
     echo "  q) Quit"
     echo ""
 }
@@ -760,6 +762,62 @@ reinitialize_app() {
     fi
 }
 
+# Function to setup SSL certificates
+setup_ssl() {
+    print_step "Setting up SSL certificates for nginx proxy..."
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    # Check if nginx is running
+    if ! docker ps | grep -q "nginx"; then
+        print_error "Nginx is not running. Please start nginx services first (option 5)."
+        return 1
+    fi
+    
+    # Check if SSL setup script exists
+    if [ ! -f "scripts/setup-ssl.sh" ]; then
+        print_error "SSL setup script not found. Please ensure scripts/setup-ssl.sh exists."
+        return 1
+    fi
+    
+    print_status "Running SSL setup script..."
+    chmod +x scripts/setup-ssl.sh
+    ./scripts/setup-ssl.sh
+    
+    print_status "SSL setup completed!"
+}
+
+# Function to renew SSL certificates
+renew_ssl() {
+    print_step "Renewing SSL certificates..."
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    local compose_cmd=$(get_docker_compose_cmd)
+    
+    print_status "Renewing SSL certificates..."
+    $compose_cmd -f docker-compose.nginx.yml run --rm certbot renew
+    
+    print_status "Restarting nginx to use renewed certificates..."
+    $compose_cmd -f docker-compose.nginx.yml restart nginx
+    
+    print_status "SSL certificate renewal completed!"
+}
+
 # Main execution function
 main() {
     # Check if .env file exists and is valid
@@ -787,6 +845,8 @@ main() {
             14) reset_mysql ;;
             15) complete_reset ;;
             16) reinitialize_app ;;
+            17) setup_ssl ;;
+            18) renew_ssl ;;
             q|Q) 
                 print_status "Exiting..."
                 exit 0
