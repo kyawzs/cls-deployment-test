@@ -440,16 +440,21 @@ start_nginx_services() {
     
     cd "$project_dir"
     
-    local compose_cmd=$(get_docker_compose_cmd)
-    
-    print_status "Starting services with Nginx..."
-    $compose_cmd -f docker-compose.nginx.yml up -d
-    
-    print_status "Services started successfully with Nginx!"
-    print_status "Application should be available at: http://localhost:80"
-    print_status "HTTPS should be available at: https://localhost:443"
-    print_status "Database is available at: localhost:3306"
-    print_status "Redis is available at: localhost:6379"
+    # Use the simple nginx start script
+    if [ -f "scripts/start-nginx-simple.sh" ]; then
+        print_status "Using simple nginx start script..."
+        chmod +x scripts/start-nginx-simple.sh
+        ./scripts/start-nginx-simple.sh
+    else
+        print_status "Starting services with Nginx (fallback)..."
+        local compose_cmd=$(get_docker_compose_cmd)
+        $compose_cmd -f docker-compose.nginx.yml up -d cls-app mysql-db redis nginx
+        
+        print_status "Services started successfully with Nginx!"
+        print_status "Application should be available at: http://localhost:80"
+        print_status "Database is available at: localhost:3306"
+        print_status "Redis is available at: localhost:6379"
+    fi
 }
 
 # Function to stop services
