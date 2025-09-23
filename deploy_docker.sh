@@ -259,37 +259,40 @@ create_docker_env() {
     
     # Update .env with deployment configuration
     print_status "Updating environment configuration..."
-    
+
+    # Replace CONTAINER_INDEX in .env
+    sed -i.bak "s/^CONTAINER_INDEX=.*/CONTAINER_INDEX=${container_index}/g" .env && rm .env.bak
+
     # Update APP_URL
     sed -i.bak "s/CLS_DOMAIN=.*/CLS_DOMAIN=${domain}/g" .env && rm .env.bak
     sed -i.bak "s/LE_EMAIL=.*/LE_EMAIL=${contact}/g" .env && rm .env.bak
-    
+
     # Update database configuration
     sed -i.bak "s/DB_CONNECTION=.*/DB_CONNECTION=mysql/g" .env && rm .env.bak
-    
+
     # Set database host based on container_index
     if [ "$container_index" -eq 1 ]; then
         sed -i.bak "s/DB_HOST=.*/DB_HOST=mysql-db/g" .env && rm .env.bak
     else
         sed -i.bak "s/DB_HOST=.*/DB_HOST=mysql-db${container_index}/g" .env && rm .env.bak
     fi
-    
+
     sed -i.bak "s/DB_PORT=.*/DB_PORT=3306/g" .env && rm .env.bak
     sed -i.bak "s/DB_DATABASE=.*/DB_DATABASE=${db}/g" .env && rm .env.bak
     sed -i.bak "s/DB_USERNAME=.*/DB_USERNAME=${user}/g" .env && rm .env.bak
     sed -i.bak "s/DB_PASSWORD=.*/DB_PASSWORD=${pass}/g" .env && rm .env.bak
-    
+
     # Update mail configuration
     sed -i.bak "s/MAIL_FROM_ADDRESS=.*/MAIL_FROM_ADDRESS=${contact}/g" .env && rm .env.bak
     sed -i.bak "s/MAIL_FROM_NAME=.*/MAIL_FROM_NAME=\"CLS System\"/g" .env && rm .env.bak
-    
+
     # Configure cache based on container_index
     if [ "$container_index" -eq 1 ]; then
         # For container_index=1, use Redis
         sed -i.bak "s/CACHE_DRIVER=.*/CACHE_DRIVER=redis/g" .env && rm .env.bak
         sed -i.bak "s/SESSION_DRIVER=.*/SESSION_DRIVER=redis/g" .env && rm .env.bak
         sed -i.bak "s/QUEUE_CONNECTION=.*/QUEUE_CONNECTION=redis/g" .env && rm .env.bak
-        
+
         # Update Redis configuration
         sed -i.bak "s/REDIS_HOST=.*/REDIS_HOST=redis/g" .env && rm .env.bak
         sed -i.bak "s/REDIS_PASSWORD=.*/REDIS_PASSWORD=/g" .env && rm .env.bak
@@ -300,12 +303,12 @@ create_docker_env() {
         sed -i.bak "s/SESSION_DRIVER=.*/SESSION_DRIVER=file/g" .env && rm .env.bak
         sed -i.bak "s/QUEUE_CONNECTION=.*/QUEUE_CONNECTION=sync/g" .env && rm .env.bak
     fi
-    
+
     # Replace CONTAINER_INDEX in docker-compose files
     print_status "Updating CONTAINER_INDEX in docker-compose files..."
     if [ -f "docker-compose-ctr.yml" ]; then
         # Create a temporary file with the container_index replaced
-        sed "s/\${CONTAINER_INDEX}/${container_index}/g" docker-compose-ctr.yml > docker-compose-ctr-${container_index}.yml
+        sed "s/CONTAINER_INDEX/${container_index}/g" docker-compose-ctr.yml > docker-compose-ctr-${container_index}.yml
         print_status "Created docker-compose-ctr-${container_index}.yml with CONTAINER_INDEX=${container_index}"
     fi
     
@@ -530,7 +533,13 @@ main() {
         
         case $choice in
             1) setup_ssh_keys ;;
-            2) clone_project ;;
+            2)
+                clone_project
+                # After cloning, replace CONTAINER_INDEX in docker-compose-ctr.yml if it exists
+                if [ -f "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" ]; then
+                    sed -i.bak "s/CONTAINER_INDEX/${container_index}/g" "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" && rm -f "${SCRIPT_DIR}/cls/docker-compose-ctr.yml.bak"
+                fi
+                ;;
             3) create_docker_env ;;
             4) deploy_docker_services ;;
             q|Q) 
