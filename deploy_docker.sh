@@ -535,9 +535,10 @@ main() {
             1) setup_ssh_keys ;;
             2)
                 clone_project
-                # After cloning, replace CONTAINER_INDEX in docker-compose-ctr.yml if it exists
+                # After cloning, replace ALL occurrences of CONTAINER_INDEX in docker-compose-ctr.yml if it exists
                 if [ -f "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" ]; then
-                    sed -i.bak "s/CONTAINER_INDEX/${container_index}/g" "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" && rm -f "${SCRIPT_DIR}/cls/docker-compose-ctr.yml.bak"
+                    # Replace all occurrences globally
+                    sed -i.bak "g;s/CONTAINER_INDEX/${container_index}/g" "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" && rm -f "${SCRIPT_DIR}/cls/docker-compose-ctr.yml.bak"
                 fi
                 ;;
             3) create_docker_env ;;
