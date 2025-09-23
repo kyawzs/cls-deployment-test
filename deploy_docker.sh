@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # CLS Docker Deployment Script
-# This script deploys the CLS Laravel application using Docker
+# This script manages Docker deployment for the CLS application
+# Supports both basic deployment and nginx-proxy deployment
 
 set -e
 
@@ -362,12 +363,12 @@ show_menu() {
     echo "  1) Setup SSH keys"
     echo "  2) Clone Laravel project"
     echo "  3) Create Docker environment"
-    echo "  4) Pull and start all services (with Nginx)"
-    echo "  5) Pull and start services (without Nginx)"
-    echo "  6) Start services (if already pulled)"
-    echo "  7) Stop all services"
-    echo "  8) Restart all services"
-    echo "  9) Pull and restart"
+    echo "  4) Start services (basic - no nginx)"
+    echo "  5) Start services (with nginx proxy)"
+    echo "  6) Stop all services"
+    echo "  7) Restart all services"
+    echo "  8) Pull and restart (basic)"
+    echo "  9) Pull and restart (with nginx)"
     echo "  10) View logs"
     echo "  11) Access application shell"
     echo "  12) Access database shell"
@@ -375,10 +376,6 @@ show_menu() {
     echo "  14) Reset MySQL database (clean volumes)"
     echo "  15) Complete reset (clean everything)"
     echo "  16) Reinitialize application (run setup tasks)"
-    echo "  17) Debug container user info"
-    echo "  d) Development mode (with Mailhog)"
-    echo "  p) Production mode (with SSL)"
-    echo "  t) Include Traccar service"
     echo "  q) Quit"
     echo ""
 }
@@ -395,45 +392,18 @@ confirm_action() {
     fi
 }
 
-# Function to setup SSH keys
-step_setup_ssh() {
-    print_step "Setting up SSH keys..."
-    
-    if ! confirm_action "Setup SSH keys for Git access?"; then
-        print_status "Skipping SSH setup..."
-        return 0
+# Function to get docker compose command
+get_docker_compose_cmd() {
+    if command_exists docker-compose; then
+        echo "docker-compose"
+    else
+        echo "docker compose"
     fi
-    
-    setup_ssh_keys
 }
 
-# Function to clone project
-step_clone_project() {
-    print_step "Cloning Laravel project..."
-    
-    if ! confirm_action "Clone Laravel project from repository?"; then
-        print_status "Skipping project cloning..."
-        return 0
-    fi
-    
-    clone_project
-}
-
-# Function to create Docker environment
-step_create_docker_env() {
-    print_step "Creating Docker environment..."
-    
-    if ! confirm_action "Create Docker environment configuration?"; then
-        print_status "Skipping Docker environment creation..."
-        return 0
-    fi
-    
-    create_docker_env
-}
-
-# Function to pull and start services
-pull_and_start() {
-    print_step "Pulling and starting CLS Docker services..."
+# Function to start basic services
+start_basic_services() {
+    print_step "Starting CLS Docker services (basic)..."
     
     local project_dir="${SCRIPT_DIR}/cls"
     
@@ -444,14 +414,10 @@ pull_and_start() {
     
     cd "$project_dir"
     
-    # Pull and start services
-    if command_exists docker-compose; then
-        docker-compose pull
-        docker-compose up -d
-    else
-        docker compose pull
-        docker compose up -d
-    fi
+    local compose_cmd=$(get_docker_compose_cmd)
+    
+    print_status "Starting services..."
+    $compose_cmd up -d
     
     print_status "Services started successfully!"
     print_status "Application should be available at: http://localhost:8080"
@@ -459,9 +425,9 @@ pull_and_start() {
     print_status "Redis is available at: localhost:6379"
 }
 
-# Function to pull and start services with Nginx
-pull_and_start_with_nginx() {
-    print_step "Pulling and starting CLS Docker services with Nginx proxy..."
+# Function to start services with nginx
+start_nginx_services() {
+    print_step "Starting CLS Docker services with Nginx proxy..."
     
     local project_dir="${SCRIPT_DIR}/cls"
     
@@ -472,70 +438,16 @@ pull_and_start_with_nginx() {
     
     cd "$project_dir"
     
-    # Pull and start services with Nginx
-    if command_exists docker-compose; then
-        docker-compose pull
-        docker-compose --profile nginx up -d
-    else
-        docker compose pull
-        docker compose --profile nginx up -d
-    fi
+    local compose_cmd=$(get_docker_compose_cmd)
+    
+    print_status "Starting services with Nginx..."
+    $compose_cmd -f docker-compose.nginx.yml up -d
     
     print_status "Services started successfully with Nginx!"
     print_status "Application should be available at: http://localhost:80"
     print_status "HTTPS should be available at: https://localhost:443"
     print_status "Database is available at: localhost:3306"
     print_status "Redis is available at: localhost:6379"
-}
-
-# Function to pull and start services without Nginx
-pull_and_start_without_nginx() {
-    print_step "Pulling and starting CLS Docker services without Nginx proxy..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found. Please clone the project first."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    # Pull and start services without Nginx
-    if command_exists docker-compose; then
-        docker-compose pull
-        docker-compose --profile app up -d
-    else
-        docker compose pull
-        docker compose --profile app up -d
-    fi
-    
-    print_status "Services started successfully without Nginx!"
-    print_status "Application should be available at: http://localhost:8080"
-    print_status "Database is available at: localhost:3306"
-    print_status "Redis is available at: localhost:6379"
-}
-
-# Function to start services
-start_services() {
-    print_step "Starting CLS Docker services..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found. Please clone the project first."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    if command_exists docker-compose; then
-        docker-compose up -d
-    else
-        docker compose up -d
-    fi
-    
-    print_status "Services started successfully!"
 }
 
 # Function to stop services
@@ -551,11 +463,11 @@ stop_services() {
     
     cd "$project_dir"
     
-    if command_exists docker-compose; then
-        docker-compose down
-    else
-        docker compose down
-    fi
+    local compose_cmd=$(get_docker_compose_cmd)
+    
+    # Stop both basic and nginx services
+    $compose_cmd down 2>/dev/null || true
+    $compose_cmd -f docker-compose.nginx.yml down 2>/dev/null || true
     
     print_status "Services stopped successfully!"
 }
@@ -573,18 +485,18 @@ restart_services() {
     
     cd "$project_dir"
     
-    if command_exists docker-compose; then
-        docker-compose restart
-    else
-        docker compose restart
-    fi
+    local compose_cmd=$(get_docker_compose_cmd)
+    
+    # Restart both basic and nginx services
+    $compose_cmd restart 2>/dev/null || true
+    $compose_cmd -f docker-compose.nginx.yml restart 2>/dev/null || true
     
     print_status "Services restarted successfully!"
 }
 
-# Function to pull and restart
-pull_restart() {
-    print_step "Pulling and restarting CLS Docker services..."
+# Function to pull and restart basic services
+pull_restart_basic() {
+    print_step "Pulling and restarting CLS Docker services (basic)..."
     
     local project_dir="${SCRIPT_DIR}/cls"
     
@@ -595,17 +507,35 @@ pull_restart() {
     
     cd "$project_dir"
     
-    if command_exists docker-compose; then
-        docker-compose down
-        docker-compose pull
-        docker-compose up -d --force-recreate
-    else
-        docker compose down
-        docker compose pull
-        docker compose up -d --force-recreate
+    local compose_cmd=$(get_docker_compose_cmd)
+    
+    $compose_cmd down
+    $compose_cmd pull
+    $compose_cmd up -d --force-recreate
+    
+    print_status "Basic services pulled and restarted successfully!"
+}
+
+# Function to pull and restart nginx services
+pull_restart_nginx() {
+    print_step "Pulling and restarting CLS Docker services (with nginx)..."
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
     fi
     
-    print_status "Services pulled and restarted successfully!"
+    cd "$project_dir"
+    
+    local compose_cmd=$(get_docker_compose_cmd)
+    
+    $compose_cmd -f docker-compose.nginx.yml down
+    $compose_cmd -f docker-compose.nginx.yml pull
+    $compose_cmd -f docker-compose.nginx.yml up -d --force-recreate
+    
+    print_status "Nginx services pulled and restarted successfully!"
 }
 
 # Function to view logs
@@ -621,28 +551,32 @@ view_logs() {
     
     cd "$project_dir"
     
+    local compose_cmd=$(get_docker_compose_cmd)
+    
     echo "Select service to view logs:"
-    echo "1) Application (cls-app)"
+    echo "1) Application (cls)"
     echo "2) Database (mysql-db)"
     echo "3) Redis (redis)"
     echo "4) Nginx (nginx)"
-    echo "5) All services"
+    echo "5) All services (basic)"
+    echo "6) All services (with nginx)"
     
-    read -p "Enter choice (1-5): " choice
+    read -p "Enter choice (1-6): " choice
     
     case $choice in
-        1) service="cls-app" ;;
+        1) service="cls" ;;
         2) service="mysql-db" ;;
         3) service="redis" ;;
         4) service="nginx" ;;
         5) service="" ;;
+        6) service="" && compose_file="-f docker-compose.nginx.yml" ;;
         *) print_error "Invalid choice"; return 1 ;;
     esac
     
-    if command_exists docker-compose; then
-        docker-compose logs -f $service
+    if [ -n "$compose_file" ]; then
+        $compose_cmd $compose_file logs -f $service
     else
-        docker compose logs -f $service
+        $compose_cmd logs -f $service
     fi
 }
 
@@ -659,11 +593,9 @@ access_shell() {
     
     cd "$project_dir"
     
-    if command_exists docker-compose; then
-        docker-compose exec cls-app bash
-    else
-        docker compose exec cls-app bash
-    fi
+    local compose_cmd=$(get_docker_compose_cmd)
+    
+    $compose_cmd exec cls bash
 }
 
 # Function to access database shell
@@ -679,11 +611,9 @@ access_database() {
     
     cd "$project_dir"
     
-    if command_exists docker-compose; then
-        docker-compose exec mysql-db mysql -u root -p
-    else
-        docker compose exec mysql-db mysql -u root -p
-    fi
+    local compose_cmd=$(get_docker_compose_cmd)
+    
+    $compose_cmd exec mysql-db mysql -u root -p
 }
 
 # Function to clean up
@@ -703,11 +633,10 @@ cleanup() {
     read -p "Type 'yes' to confirm: " confirm
     
     if [ "$confirm" = "yes" ]; then
-        if command_exists docker-compose; then
-            docker-compose down -v 
-        else
-            docker compose down -v 
-        fi
+        local compose_cmd=$(get_docker_compose_cmd)
+        
+        $compose_cmd down -v 2>/dev/null || true
+        $compose_cmd -f docker-compose.nginx.yml down -v 2>/dev/null || true
         
         print_status "Cleanup completed!"
     else
@@ -732,32 +661,17 @@ reset_mysql() {
     read -p "Type 'yes' to confirm: " confirm
     
     if [ "$confirm" = "yes" ]; then
-        print_status "Stopping MySQL container..."
-        if command_exists docker-compose; then
-            docker-compose stop mysql-db
-        else
-            docker compose stop mysql-db
-        fi
+        local compose_cmd=$(get_docker_compose_cmd)
         
-        print_status "Removing MySQL volumes..."
-        if command_exists docker-compose; then
-            docker-compose rm -f -v mysql-db
-        else
-            docker compose rm -f -v mysql-db
-        fi
+        print_status "Stopping MySQL container..."
+        $compose_cmd stop mysql-db 2>/dev/null || true
+        $compose_cmd -f docker-compose.nginx.yml stop mysql-db 2>/dev/null || true
         
         print_status "Removing MySQL data volume..."
-        docker volume rm cls_mysql_data 2>/dev/null || true
-        
-        print_status "Removing any existing MySQL containers..."
-        docker rm -f cls-mysql 2>/dev/null || true
+        rm -rf ./run/data 2>/dev/null || true
         
         print_status "Starting MySQL with fresh data..."
-        if command_exists docker-compose; then
-            docker-compose up -d mysql-db
-        else
-            docker compose up -d mysql-db
-        fi
+        $compose_cmd up -d mysql-db
         
         print_status "Waiting for MySQL to initialize..."
         sleep 30
@@ -786,12 +700,11 @@ complete_reset() {
     read -p "Type 'yes' to confirm: " confirm
     
     if [ "$confirm" = "yes" ]; then
+        local compose_cmd=$(get_docker_compose_cmd)
+        
         print_status "Stopping all containers..."
-        if command_exists docker-compose; then
-            docker-compose down -v --remove-orphans
-        else
-            docker compose down -v --remove-orphans
-        fi
+        $compose_cmd down -v --remove-orphans 2>/dev/null || true
+        $compose_cmd -f docker-compose.nginx.yml down -v --remove-orphans 2>/dev/null || true
         
         print_status "Removing all containers..."
         docker container prune -f
@@ -809,7 +722,7 @@ complete_reset() {
         docker system prune -a -f --volumes
         
         print_status "Complete reset finished!"
-        print_status "You can now start fresh with option 5 (without Nginx) or option 4 (with Nginx)"
+        print_status "You can now start fresh with option 4 (basic) or option 5 (with nginx)"
     else
         print_status "Complete reset cancelled."
     fi
@@ -829,142 +742,22 @@ reinitialize_app() {
     cd "$project_dir"
     
     print_status "Removing initialization marker..."
-    docker exec cls-app rm -f /var/www/html/.container-initialized 2>/dev/null || true
+    docker exec cls rm -f /var/www/html/.first_run 2>/dev/null || true
     
     print_status "Restarting application container..."
-    if command_exists docker-compose; then
-        docker-compose restart cls-app
-    else
-        docker compose restart cls-app
-    fi
+    local compose_cmd=$(get_docker_compose_cmd)
+    $compose_cmd restart cls
     
     print_status "Waiting for application to initialize..."
     sleep 30
     
     print_status "Checking application status..."
-    if docker exec cls-app pgrep apache2 > /dev/null 2>&1; then
+    if docker exec cls pgrep apache2 > /dev/null 2>&1; then
         print_status "Application reinitialized successfully!"
         print_status "You can check the logs with option 10"
     else
         print_error "Application failed to start. Check logs with option 10"
     fi
-}
-
-# Function to debug container user info
-debug_container_user() {
-    print_step "Debugging container user information..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    print_status "Checking if cls-app container is running..."
-    if ! docker ps | grep -q "cls-app"; then
-        print_error "cls-app container is not running. Please start it first."
-        return 1
-    fi
-    
-    print_status "Container user information:"
-    docker exec cls-app whoami
-    docker exec cls-app id
-    docker exec cls-app cat /etc/passwd | grep -E "(www-data|apache|appuser|root)" || print_warning "No standard web users found"
-    
-    print_status "Container file permissions:"
-    docker exec cls-app ls -la /var/www/html/
-    
-    print_status "Container process information:"
-    docker exec cls-app ps aux | head -10
-    
-    print_status "Apache2 commands available:"
-    docker exec cls-app which apache2-foreground apachectl httpd 2>/dev/null || true
-    
-    print_status "Apache2 files in /usr/sbin:"
-    docker exec cls-app ls -la /usr/sbin/apache* /usr/sbin/httpd* 2>/dev/null || true
-    
-    print_status "Apache2 service status:"
-    docker exec cls-app service apache2 status 2>/dev/null || true
-}
-
-# Function to run in development mode
-development_mode() {
-    print_step "Starting in development mode with Mailhog..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found. Please clone the project first."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    if command_exists docker-compose; then
-        COMPOSE_PROFILES=development docker-compose pull
-        COMPOSE_PROFILES=development docker-compose up -d
-    else
-        COMPOSE_PROFILES=development docker compose pull
-        COMPOSE_PROFILES=development docker compose up -d
-    fi
-    
-    print_status "Development services started!"
-    print_status "Application: http://localhost:8080"
-    print_status "Mailhog UI: http://localhost:8025"
-}
-
-# Function to run in production mode
-production_mode() {
-    print_step "Starting in production mode with SSL..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found. Please clone the project first."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    if command_exists docker-compose; then
-        COMPOSE_PROFILES=production docker-compose pull
-        COMPOSE_PROFILES=production docker-compose up -d
-    else
-        COMPOSE_PROFILES=production docker compose pull
-        COMPOSE_PROFILES=production docker compose up -d
-    fi
-    
-    print_status "Production services started!"
-    print_status "Application: https://${domain:-localhost}"
-}
-
-# Function to include Traccar
-include_traccar() {
-    print_step "Starting with Traccar GPS service..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found. Please clone the project first."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    if command_exists docker-compose; then
-        COMPOSE_PROFILES=traccar docker-compose pull
-        COMPOSE_PROFILES=traccar docker-compose up -d
-    else
-        COMPOSE_PROFILES=traccar docker compose pull
-        COMPOSE_PROFILES=traccar docker compose up -d
-    fi
-    
-    print_status "Services with Traccar started!"
-    print_status "Application: http://localhost:8080"
-    print_status "Traccar: http://localhost:8082"
 }
 
 # Main execution function
@@ -978,15 +771,15 @@ main() {
         read -p "Select an option: " choice
         
         case $choice in
-            1) step_setup_ssh ;;
-            2) step_clone_project ;;
-            3) step_create_docker_env ;;
-            4) pull_and_start_with_nginx ;;
-            5) pull_and_start_without_nginx ;;
-            6) start_services ;;
-            7) stop_services ;;
-            8) restart_services ;;
-            9) pull_restart ;;
+            1) setup_ssh_keys ;;
+            2) clone_project ;;
+            3) create_docker_env ;;
+            4) start_basic_services ;;
+            5) start_nginx_services ;;
+            6) stop_services ;;
+            7) restart_services ;;
+            8) pull_restart_basic ;;
+            9) pull_restart_nginx ;;
             10) view_logs ;;
             11) access_shell ;;
             12) access_database ;;
@@ -994,10 +787,6 @@ main() {
             14) reset_mysql ;;
             15) complete_reset ;;
             16) reinitialize_app ;;
-            17) debug_container_user ;;
-            d|D) development_mode ;;
-            p|P) production_mode ;;
-            t|T) include_traccar ;;
             q|Q) 
                 print_status "Exiting..."
                 exit 0
