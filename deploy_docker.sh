@@ -1,8 +1,7 @@
 #!/bin/bash
 
 # CLS Docker Deployment Script
-# This script manages Docker deployment for the CLS application
-# Supports both basic deployment and nginx-proxy deployment
+# Simplified version for nginx proxy deployment
 
 set -e
 
@@ -132,7 +131,7 @@ check_env_file() {
     source .env
     
     # Validate required variables
-    local required_vars=("domain" "db" "user" "pass" "contact" "repo" "branch")
+    local required_vars=("domain" "db" "user" "pass" "contact" "repo" "branch" "container_index")
     local missing_vars=()
     
     for var in "${required_vars[@]}"; do
@@ -157,6 +156,7 @@ create_env_template() {
 # Domain configuration
 domain=your-domain.com
 contact=admin@your-domain.com
+container_index=1
 
 # Database configuration
 db=cls_database
@@ -237,7 +237,7 @@ clone_project() {
 
 # Function to create Docker environment file
 create_docker_env() {
-    print_step "Creating Docker environment file..."
+    print_step "Step 3: Creating Docker environment file..."
     
     local project_dir="${SCRIPT_DIR}/cls"
     
@@ -261,11 +261,19 @@ create_docker_env() {
     print_status "Updating environment configuration..."
     
     # Update APP_URL
-    sed -i.bak "s|APP_URL=.*|APP_URL=https://${domain}|g" .env && rm .env.bak
+    sed -i.bak "s/CLS_DOMAIN=.*/CLS_DOMAIN=${domain}/g" .env && rm .env.bak
+    sed -i.bak "s/LE_EMAIL=.*/LE_EMAIL=${contact}/g" .env && rm .env.bak
     
     # Update database configuration
     sed -i.bak "s/DB_CONNECTION=.*/DB_CONNECTION=mysql/g" .env && rm .env.bak
-    sed -i.bak "s/DB_HOST=.*/DB_HOST=mysql-db/g" .env && rm .env.bak
+    
+    # Set database host based on container_index
+    if [ "$container_index" -eq 1 ]; then
+        sed -i.bak "s/DB_HOST=.*/DB_HOST=mysql-db/g" .env && rm .env.bak
+    else
+        sed -i.bak "s/DB_HOST=.*/DB_HOST=mysql-db${container_index}/g" .env && rm .env.bak
+    fi
+    
     sed -i.bak "s/DB_PORT=.*/DB_PORT=3306/g" .env && rm .env.bak
     sed -i.bak "s/DB_DATABASE=.*/DB_DATABASE=${db}/g" .env && rm .env.bak
     sed -i.bak "s/DB_USERNAME=.*/DB_USERNAME=${user}/g" .env && rm .env.bak
@@ -275,127 +283,36 @@ create_docker_env() {
     sed -i.bak "s/MAIL_FROM_ADDRESS=.*/MAIL_FROM_ADDRESS=${contact}/g" .env && rm .env.bak
     sed -i.bak "s/MAIL_FROM_NAME=.*/MAIL_FROM_NAME=\"CLS System\"/g" .env && rm .env.bak
     
-    # Update cache configuration for Redis
-    sed -i.bak "s/CACHE_DRIVER=.*/CACHE_DRIVER=redis/g" .env && rm .env.bak
-    sed -i.bak "s/SESSION_DRIVER=.*/SESSION_DRIVER=redis/g" .env && rm .env.bak
-    sed -i.bak "s/QUEUE_CONNECTION=.*/QUEUE_CONNECTION=redis/g" .env && rm .env.bak
+    # Configure cache based on container_index
+    if [ "$container_index" -eq 1 ]; then
+        # For container_index=1, use Redis
+        sed -i.bak "s/CACHE_DRIVER=.*/CACHE_DRIVER=redis/g" .env && rm .env.bak
+        sed -i.bak "s/SESSION_DRIVER=.*/SESSION_DRIVER=redis/g" .env && rm .env.bak
+        sed -i.bak "s/QUEUE_CONNECTION=.*/QUEUE_CONNECTION=redis/g" .env && rm .env.bak
+        
+        # Update Redis configuration
+        sed -i.bak "s/REDIS_HOST=.*/REDIS_HOST=redis/g" .env && rm .env.bak
+        sed -i.bak "s/REDIS_PASSWORD=.*/REDIS_PASSWORD=/g" .env && rm .env.bak
+        sed -i.bak "s/REDIS_PORT=.*/REDIS_PORT=6379/g" .env && rm .env.bak
+    else
+        # For container_index>1, use file-based cache (no Redis)
+        sed -i.bak "s/CACHE_DRIVER=.*/CACHE_DRIVER=file/g" .env && rm .env.bak
+        sed -i.bak "s/SESSION_DRIVER=.*/SESSION_DRIVER=file/g" .env && rm .env.bak
+        sed -i.bak "s/QUEUE_CONNECTION=.*/QUEUE_CONNECTION=sync/g" .env && rm .env.bak
+    fi
     
-    # Update Redis configuration
-    sed -i.bak "s/REDIS_HOST=.*/REDIS_HOST=redis/g" .env && rm .env.bak
-    sed -i.bak "s/REDIS_PASSWORD=.*/REDIS_PASSWORD=/g" .env && rm .env.bak
-    sed -i.bak "s/REDIS_PORT=.*/REDIS_PORT=6379/g" .env && rm .env.bak
-    
-    # Create Docker-specific environment file
-    cat > .env.docker << EOF
-# CLS Docker Environment Configuration
-# Generated automatically from deployment configuration
-
-# Application Configuration
-APP_NAME=CLS
-APP_ENV=production
-APP_KEY=
-APP_DEBUG=false
-APP_URL=https://${domain}
-
-# Domain Configuration
-CLS_DOMAIN=${domain}
-CLS_ADMIN_EMAIL=${contact}
-CLS_PORT=8080
-CLS_SSL_PORT=8443
-
-# Database Configuration
-DB_DATABASE=${db}
-DB_USERNAME=${user}
-DB_PASSWORD=${pass}
-MYSQL_ROOT_PASSWORD=${pass}
-MYSQL_PORT=3306
-
-# Redis Configuration
-REDIS_PASSWORD=
-REDIS_PORT=6379
-
-# Cache Configuration
-CACHE_DRIVER=redis
-SESSION_DRIVER=redis
-QUEUE_CONNECTION=redis
-
-# Mail Configuration
-MAIL_MAILER=smtp
-MAIL_HOST=mailhog
-MAIL_PORT=1025
-MAIL_USERNAME=
-MAIL_PASSWORD=
-MAIL_ENCRYPTION=
-MAIL_FROM_ADDRESS=${contact}
-MAIL_FROM_NAME=CLS System
-
-# PHP Configuration
-PHP_MEMORY_LIMIT=512M
-PHP_MAX_EXECUTION_TIME=300
-PHP_UPLOAD_MAX_FILESIZE=200M
-PHP_POST_MAX_SIZE=200M
-
-# Traccar Configuration (Optional)
-TRACCAR_DOMAIN=traccar.${domain}
-
-# User Configuration
-USER_ID=1000
-GROUP_ID=1000
-EOF
+    # Replace CONTAINER_INDEX in docker-compose files
+    print_status "Updating CONTAINER_INDEX in docker-compose files..."
+    if [ -f "docker-compose-ctr.yml" ]; then
+        # Create a temporary file with the container_index replaced
+        sed "s/\${CONTAINER_INDEX}/${container_index}/g" docker-compose-ctr.yml > docker-compose-ctr-${container_index}.yml
+        print_status "Created docker-compose-ctr-${container_index}.yml with CONTAINER_INDEX=${container_index}"
+    fi
     
     print_status "Docker environment configuration completed!"
 }
 
 # Function to show menu
-show_menu() {
-    echo ""
-    echo "=========================================="
-    echo "  CLS Docker Deployment Management"
-    echo "=========================================="
-    echo ""
-    echo "Current Configuration:"
-    echo "  Domain: ${domain:-'Not set'}"
-    echo "  Database: ${db:-'Not set'}"
-    echo "  Repository: ${repo:-'Not set'}"
-    echo "  Branch: ${branch:-'Not set'}"
-    echo ""
-    echo "Available options:"
-    echo "  1) Setup SSH keys"
-    echo "  2) Clone Laravel project"
-    echo "  3) Create Docker environment"
-    echo "  4) Start services (basic - no nginx)"
-    echo "  5) Start services (with nginx proxy)"
-    echo "  6) Stop all services"
-    echo "  7) Restart all services"
-    echo "  8) Pull and restart (basic)"
-    echo "  9) Pull and restart (with nginx)"
-    echo "  10) View logs"
-    echo "  11) Access application shell"
-    echo "  12) Access database shell"
-    echo "  13) Clean up (remove containers and volumes)"
-    echo "  14) Reset MySQL database (clean volumes)"
-    echo "  15) Complete reset (clean everything)"
-    echo "  16) Reinitialize application (run setup tasks)"
-    echo "  17) Setup SSL certificates (for nginx proxy)"
-    echo "  18) Renew SSL certificates"
-    echo "  19) Test SSL setup (staging environment)"
-    echo "  20) Switch to SSL mode (after certificate setup)"
-    echo "  q) Quit"
-    echo ""
-}
-
-# Function to confirm action
-confirm_action() {
-    local message="$1"
-    read -p "$message (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
 # Function to get docker compose command
 get_docker_compose_cmd() {
     if command_exists docker-compose; then
@@ -406,536 +323,119 @@ get_docker_compose_cmd() {
 }
 
 # Function to start basic services
-start_basic_services() {
-    print_step "Starting CLS Docker services (basic)..."
-    
+# Function to deploy docker services
+deploy_docker_services() {
     local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found. Please clone the project first."
-        return 1
-    fi
-    
     cd "$project_dir"
     
     local compose_cmd=$(get_docker_compose_cmd)
     
-    print_status "Starting services..."
-    $compose_cmd up -d
-    
-    print_status "Services started successfully!"
-    print_status "Application should be available at: http://localhost:8080"
-    print_status "Database is available at: localhost:3306"
-    print_status "Redis is available at: localhost:6379"
-}
-
-# Function to start services with nginx
-start_nginx_services() {
-    print_step "Starting CLS Docker services with Nginx proxy..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found. Please clone the project first."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    # Use the simple nginx start script
-    if [ -f "scripts/start-nginx-simple.sh" ]; then
-        print_status "Using simple nginx start script..."
-        chmod +x scripts/start-nginx-simple.sh
-        ./scripts/start-nginx-simple.sh
+    if [ "$container_index" -eq 1 ]; then
+        print_step "Step 4: Starting main CLS Docker services..."
+        print_status "Running docker-compose up -d..."
+        
+        if $compose_cmd up -d; then
+            print_status "Main Docker services started successfully!"
+            print_status "Application should be available at: http://localhost:8080"
+        else
+            print_error "Failed to start main Docker services!"
+            return 1
+        fi
+        
+        print_step "Step 5: Starting Nginx Proxy Manager..."
+        print_status "Running docker-compose -f docker-compose.nginx.yml up -d..."
+        
+        if $compose_cmd -f docker-compose.nginx.yml up -d; then
+            print_status "Nginx Proxy Manager started successfully!"
+            print_status "Proxy Manager Web UI available at: http://localhost:81"
+            print_status "Default login: admin@example.com / changeme"
+        else
+            print_error "Failed to start Nginx Proxy Manager!"
+            return 1
+        fi
     else
-        print_status "Starting services with Nginx (fallback)..."
-        local compose_cmd=$(get_docker_compose_cmd)
-        $compose_cmd -f docker-compose.nginx.yml up -d cls-app mysql-db redis nginx
+        print_step "Step 4/5: Starting CLS Docker services for container instance ${container_index}..."
+        print_status "Running docker-compose -f docker-compose-ctr.yml up -d..."
         
-        print_status "Services started successfully with Nginx!"
-        print_status "Application should be available at: http://localhost:80"
-        print_status "Database is available at: localhost:3306"
-        print_status "Redis is available at: localhost:6379"
+        # Use the updated compose file with container_index replaced
+        if [ -f "docker-compose-ctr-${container_index}.yml" ]; then
+            if $compose_cmd -f docker-compose-ctr-${container_index}.yml up -d; then
+                print_status "Docker services for container ${container_index} started successfully!"
+                print_status "Application should be available at: http://localhost:8081"
+            else
+                print_error "Failed to start Docker services for container ${container_index}!"
+                return 1
+            fi
+        else
+            print_error "docker-compose-ctr-${container_index}.yml not found!"
+            return 1
+        fi
     fi
+    
+    # Wait a moment for services to fully start
+    sleep 5
+    
+    # Show service status
+    print_status "Current running services:"
+    $compose_cmd ps
 }
 
-# Function to stop services
-stop_services() {
-    print_step "Stopping CLS Docker services..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    local compose_cmd=$(get_docker_compose_cmd)
-    
-    # Stop both basic and nginx services
-    $compose_cmd down 2>/dev/null || true
-    $compose_cmd -f docker-compose.nginx.yml down 2>/dev/null || true
-    
-    print_status "Services stopped successfully!"
-}
-
-# Function to restart services
-restart_services() {
-    print_step "Restarting CLS Docker services..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    local compose_cmd=$(get_docker_compose_cmd)
-    
-    # Restart both basic and nginx services
-    $compose_cmd restart 2>/dev/null || true
-    $compose_cmd -f docker-compose.nginx.yml restart 2>/dev/null || true
-    
-    print_status "Services restarted successfully!"
-}
-
-# Function to pull and restart basic services
-pull_restart_basic() {
-    print_step "Pulling and restarting CLS Docker services (basic)..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    local compose_cmd=$(get_docker_compose_cmd)
-    
-    $compose_cmd down
-    $compose_cmd pull
-    $compose_cmd up -d --force-recreate
-    
-    print_status "Basic services pulled and restarted successfully!"
-}
-
-# Function to pull and restart nginx services
-pull_restart_nginx() {
-    print_step "Pulling and restarting CLS Docker services (with nginx)..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    local compose_cmd=$(get_docker_compose_cmd)
-    
-    $compose_cmd -f docker-compose.nginx.yml down
-    $compose_cmd -f docker-compose.nginx.yml pull
-    $compose_cmd -f docker-compose.nginx.yml up -d --force-recreate
-    
-    print_status "Nginx services pulled and restarted successfully!"
-}
-
-# Function to view logs
-view_logs() {
-    print_step "Viewing CLS Docker logs..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    local compose_cmd=$(get_docker_compose_cmd)
-    
-    echo "Select service to view logs:"
-    echo "1) Application (cls)"
-    echo "2) Database (mysql-db)"
-    echo "3) Redis (redis)"
-    echo "4) Nginx (nginx)"
-    echo "5) All services (basic)"
-    echo "6) All services (with nginx)"
-    
-    read -p "Enter choice (1-6): " choice
-    
-    case $choice in
-        1) service="cls" ;;
-        2) service="mysql-db" ;;
-        3) service="redis" ;;
-        4) service="nginx" ;;
-        5) service="" ;;
-        6) service="" && compose_file="-f docker-compose.nginx.yml" ;;
-        *) print_error "Invalid choice"; return 1 ;;
-    esac
-    
-    if [ -n "$compose_file" ]; then
-        $compose_cmd $compose_file logs -f $service
-    else
-        $compose_cmd logs -f $service
-    fi
-}
-
-# Function to access application shell
-access_shell() {
-    print_step "Accessing CLS application shell..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    local compose_cmd=$(get_docker_compose_cmd)
-    
-    $compose_cmd exec cls bash
-}
-
-# Function to access database shell
-access_database() {
-    print_step "Accessing MySQL database shell..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    local compose_cmd=$(get_docker_compose_cmd)
-    
-    $compose_cmd exec mysql-db mysql -u root -p
-}
-
-# Function to clean up
-cleanup() {
-    print_step "Cleaning up CLS Docker environment..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    print_warning "This will remove all containers, volumes, and images. Are you sure?"
-    read -p "Type 'yes' to confirm: " confirm
-    
-    if [ "$confirm" = "yes" ]; then
-        local compose_cmd=$(get_docker_compose_cmd)
-        
-        $compose_cmd down -v 2>/dev/null || true
-        $compose_cmd -f docker-compose.nginx.yml down -v 2>/dev/null || true
-        
-        print_status "Cleanup completed!"
-    else
-        print_status "Cleanup cancelled."
-    fi
-}
-
-# Function to reset MySQL database
-reset_mysql() {
-    print_step "Resetting MySQL database..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    print_warning "This will remove all MySQL data and volumes. Are you sure?"
-    read -p "Type 'yes' to confirm: " confirm
-    
-    if [ "$confirm" = "yes" ]; then
-        local compose_cmd=$(get_docker_compose_cmd)
-        
-        print_status "Stopping MySQL container..."
-        $compose_cmd stop mysql-db 2>/dev/null || true
-        $compose_cmd -f docker-compose.nginx.yml stop mysql-db 2>/dev/null || true
-        
-        print_status "Removing MySQL data volume..."
-        rm -rf ./run/data 2>/dev/null || true
-        
-        print_status "Starting MySQL with fresh data..."
-        $compose_cmd up -d mysql-db
-        
-        print_status "Waiting for MySQL to initialize..."
-        sleep 30
-        
-        print_status "MySQL database reset completed!"
-        print_status "You may need to run database migrations again."
-    else
-        print_status "MySQL reset cancelled."
-    fi
-}
-
-# Function to complete reset everything
-complete_reset() {
-    print_step "Performing complete reset of CLS Docker environment..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    print_warning "This will remove ALL containers, volumes, images, and networks. Are you sure?"
-    read -p "Type 'yes' to confirm: " confirm
-    
-    if [ "$confirm" = "yes" ]; then
-        local compose_cmd=$(get_docker_compose_cmd)
-        
-        print_status "Stopping all containers..."
-        $compose_cmd down -v --remove-orphans 2>/dev/null || true
-        $compose_cmd -f docker-compose.nginx.yml down -v --remove-orphans 2>/dev/null || true
-        
-        print_status "Removing all containers..."
-        docker container prune -f
-        
-        print_status "Removing all volumes..."
-        docker volume prune -f
-        
-        print_status "Removing all networks..."
-        docker network prune -f
-        
-        print_status "Removing all images..."
-        docker image prune -a -f
-        
-        print_status "Cleaning up system..."
-        docker system prune -a -f --volumes
-        
-        print_status "Complete reset finished!"
-        print_status "You can now start fresh with option 4 (basic) or option 5 (with nginx)"
-    else
-        print_status "Complete reset cancelled."
-    fi
-}
-
-# Function to reinitialize application
-reinitialize_app() {
-    print_step "Reinitializing CLS application..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    print_status "Removing initialization marker..."
-    docker exec cls rm -f /var/www/html/.first_run 2>/dev/null || true
-    
-    print_status "Restarting application container..."
-    local compose_cmd=$(get_docker_compose_cmd)
-    $compose_cmd restart cls
-    
-    print_status "Waiting for application to initialize..."
-    sleep 30
-    
-    print_status "Checking application status..."
-    if docker exec cls pgrep apache2 > /dev/null 2>&1; then
-        print_status "Application reinitialized successfully!"
-        print_status "You can check the logs with option 10"
-    else
-        print_error "Application failed to start. Check logs with option 10"
-    fi
-}
-
-# Function to setup SSL certificates
-setup_ssl() {
-    print_step "Setting up SSL certificates for nginx proxy..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    # Check if nginx is running
-    if ! docker ps | grep -q "nginx"; then
-        print_error "Nginx is not running. Please start nginx services first (option 5)."
-        return 1
-    fi
-    
-    # Check if SSL setup script exists
-    if [ ! -f "scripts/setup-ssl.sh" ]; then
-        print_error "SSL setup script not found. Please ensure scripts/setup-ssl.sh exists."
-        return 1
-    fi
-    
-    print_status "Running SSL setup script..."
-    chmod +x scripts/setup-ssl.sh
-    ./scripts/setup-ssl.sh
-    
-    print_status "SSL setup completed!"
-}
-
-# Function to renew SSL certificates
-renew_ssl() {
-    print_step "Renewing SSL certificates..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    # Use the SSL renewal script
-    if [ -f "scripts/ssl-renew.sh" ]; then
-        print_status "Using SSL renewal script..."
-        chmod +x scripts/ssl-renew.sh
-        ./scripts/ssl-renew.sh
-    else
-        print_error "SSL renewal script not found."
-        return 1
-    fi
-}
-
-# Function to test SSL setup
-test_ssl() {
-    print_step "Testing SSL setup with staging environment..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    # Use the SSL test script
-    if [ -f "scripts/ssl-test.sh" ]; then
-        print_status "Using SSL test script..."
-        chmod +x scripts/ssl-test.sh
-        ./scripts/ssl-test.sh
-    else
-        print_error "SSL test script not found."
-        return 1
-    fi
-}
-
-# Function to switch to SSL mode
-switch_to_ssl() {
-    print_step "Switching to SSL mode..."
-    
-    local project_dir="${SCRIPT_DIR}/cls"
-    
-    if [ ! -d "$project_dir" ]; then
-        print_error "Project directory not found."
-        return 1
-    fi
-    
-    cd "$project_dir"
-    
-    # Check if SSL setup is complete
-    if [ ! -f "docker-compose.ssl.yml" ]; then
-        print_error "SSL setup not complete. Please run option 17 (Setup SSL certificates) first."
-        return 1
-    fi
-    
-    # Stop current nginx
-    print_status "Stopping current nginx..."
-    docker compose -f docker-compose.nginx.yml down nginx 2>/dev/null || true
-    
-    # Start SSL nginx
-    print_status "Starting nginx with SSL..."
-    docker compose -f docker-compose.ssl.yml up -d nginx
-    
-    # Wait for nginx to start
-    sleep 10
-    
-    # Check if nginx is running
-    if docker ps | grep -q "nginx"; then
-        print_status "✓ Nginx is running with SSL!"
-        print_status "Your application is now available at:"
-        print_status "  HTTP:  http://${domain:-localhost} (redirects to HTTPS)"
-        print_status "  HTTPS: https://${domain:-localhost}"
-    else
-        print_error "Nginx failed to start with SSL. Check logs:"
-        docker compose -f docker-compose.ssl.yml logs nginx
-        return 1
-    fi
-}
-
-# Main execution function
+# Simplified main function for deployment
 main() {
     # Check if .env file exists and is valid
     check_env_file
     
-    # Main interactive loop
-    while true; do
-        show_menu
-        read -p "Select an option: " choice
-        
-        case $choice in
-            1) setup_ssh_keys ;;
-            2) clone_project ;;
-            3) create_docker_env ;;
-            4) start_basic_services ;;
-            5) start_nginx_services ;;
-            6) stop_services ;;
-            7) restart_services ;;
-            8) pull_restart_basic ;;
-            9) pull_restart_nginx ;;
-            10) view_logs ;;
-            11) access_shell ;;
-            12) access_database ;;
-            13) cleanup ;;
-            14) reset_mysql ;;
-            15) complete_reset ;;
-            16) reinitialize_app ;;
-            17) setup_ssl ;;
-            18) renew_ssl ;;
-            19) test_ssl ;;
-            20) switch_to_ssl ;;
-            q|Q) 
-                print_status "Exiting..."
-                exit 0
-                ;;
-            *)
-                print_error "Invalid option. Please try again."
-                ;;
-        esac
-        
-        if [ "$choice" != "q" ] && [ "$choice" != "Q" ]; then
-            read -p "Press Enter to continue..."
-        fi
-    done
+    echo ""
+    echo "=========================================="
+    echo "  CLS Docker Deployment Script"
+    echo "=========================================="
+    echo ""
+    echo "Current Configuration:"
+    echo "  Domain: ${domain:-'Not set'}"
+    echo "  Database: ${db:-'Not set'}"
+    echo "  Repository: ${repo:-'Not set'}"
+    echo "  Branch: ${branch:-'Not set'}"
+    echo "  Container Index: ${container_index:-'Not set'}"
+    echo ""
+    
+    print_step "Step 1: Setting up SSH keys..."
+    setup_ssh_keys
+    
+    print_step "Step 2: Cloning Laravel project..."
+    clone_project
+    
+    print_step "Step 3: Creating Docker environment..."
+    create_docker_env
+    
+    print_step "Step 4/5: Deploying Docker services..."
+    deploy_docker_services
+    
+    print_status "=========================================="
+    print_status "CLS Docker Deployment Completed!"
+    print_status "=========================================="
+    
+    if [ "$container_index" -eq 1 ]; then
+        echo ""
+        print_status "Services available:"
+        print_status "  • Main Application: http://localhost:8080"
+        print_status "  • Nginx Proxy Manager: http://localhost:81"
+        print_status "    - Default login: admin@example.com / changeme"
+        print_status "  • MySQL Database: localhost:3306"
+        print_status "  • Redis Cache: localhost:6379"
+    else
+        echo ""
+        print_status "Services available:"
+        print_status "  • Application Instance ${container_index}: http://localhost:8081"
+        print_status "  • MySQL Database: localhost:3306"
+        print_status "    (Note: Redis not available for container_index > 1)"
+    fi
+    
+    echo ""
+    print_status "Next steps:"
+    print_status "1. Configure your Nginx Proxy Manager at http://localhost:81"
+    print_status "2. Set up SSL certificates through the proxy manager"
+    print_status "3. Configure your domain to point to this server"
+    echo ""
 }
 
 # Run main function
