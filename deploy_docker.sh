@@ -438,5 +438,115 @@ main() {
     echo ""
 }
 
+# Function to show menu
+show_menu() {
+    echo ""
+    echo "=========================================="
+    echo "  CLS Docker Deployment Management"
+    echo "=========================================="
+    echo ""
+    echo "Current Configuration:"
+    echo "  Domain: ${domain:-'Not set'}"
+    echo "  Database: ${db:-'Not set'}"
+    echo "  Repository: ${repo:-'Not set'}"
+    echo "  Branch: ${branch:-'Not set'}"
+    echo "  Container Index: ${container_index:-'Not set'}"
+    echo ""
+    echo "Available options:"
+    echo "  1) Setup SSH keys"
+    echo "  2) Clone Laravel project"
+    echo "  3) Create Docker environment"
+    echo "  4) Deploy Docker services"
+    echo "  q) Quit"
+    echo ""
+}
+
+# Function to deploy docker services (new step 4)
+deploy_docker_services() {
+    local project_dir="${SCRIPT_DIR}/cls"
+    cd "$project_dir"
+    
+    local compose_cmd=$(get_docker_compose_cmd)
+    
+    if [ "$container_index" -eq 1 ]; then
+        print_step "Starting main CLS Docker services..."
+        print_status "Running docker-compose up -d..."
+        
+        if $compose_cmd up -d; then
+            print_status "Main Docker services started successfully!"
+            print_status "Application should be available at: http://localhost:8080"
+        else
+            print_error "Failed to start main Docker services!"
+            return 1
+        fi
+        
+        print_status "Starting Nginx Proxy Manager..."
+        print_status "Running docker-compose -f docker-compose.nginx.yml up -d..."
+        
+        if $compose_cmd -f docker-compose.nginx.yml up -d; then
+            print_status "Nginx Proxy Manager started successfully!"
+            print_status "Proxy Manager Web UI available at: http://localhost:81"
+            print_status "Default login: admin@example.com / changeme"
+        else
+            print_error "Failed to start Nginx Proxy Manager!"
+            return 1
+        fi
+    else
+        print_status "Starting CLS Docker services for container instance ${container_index}..."
+        print_status "Running docker-compose -f docker-compose-ctr.yml up -d..."
+        
+        # Use the updated compose file with container_index replaced
+        if [ -f "docker-compose-ctr-${container_index}.yml" ]; then
+            if $compose_cmd -f docker-compose-ctr-${container_index}.yml up -d; then
+                print_status "Docker services for container ${container_index} started successfully!"
+                print_status "Application should be available at: http://localhost:8081"
+            else
+                print_error "Failed to start Docker services for container ${container_index}!"
+                return 1
+            fi
+        else
+            print_error "docker-compose-ctr-${container_index}.yml not found!"
+            return 1
+        fi
+    fi
+    
+    # Wait a moment for services to fully start
+    sleep 5
+    
+    # Show service status
+    print_status "Current running services:"
+    $compose_cmd ps
+}
+
+# Main execution function
+main() {
+    # Check if .env file exists and is valid
+    check_env_file
+    
+    # Main interactive loop
+    while true; do
+        show_menu
+        read -p "Select an option: " choice
+        
+        case $choice in
+            1) setup_ssh_keys ;;
+            2) clone_project ;;
+            3) create_docker_env ;;
+            4) deploy_docker_services ;;
+            q|Q) 
+                print_status "Exiting..."
+                exit 0
+                ;;
+            *)
+                print_error "Invalid option. Please try again."
+                ;;
+        esac
+        
+        if [ "$choice" != "q" ] && [ "$choice" != "Q" ]; then
+            read -p "Press Enter to continue..."
+        fi
+    done
+}
+
 # Run main function
 main "$@"
