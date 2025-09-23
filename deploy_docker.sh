@@ -378,6 +378,8 @@ show_menu() {
     echo "  16) Reinitialize application (run setup tasks)"
     echo "  17) Setup SSL certificates (for nginx proxy)"
     echo "  18) Renew SSL certificates"
+    echo "  19) Test SSL setup (staging environment)"
+    echo "  20) Switch to SSL mode (after certificate setup)"
     echo "  q) Quit"
     echo ""
 }
@@ -812,15 +814,82 @@ renew_ssl() {
     
     cd "$project_dir"
     
-    local compose_cmd=$(get_docker_compose_cmd)
+    # Use the SSL renewal script
+    if [ -f "scripts/ssl-renew.sh" ]; then
+        print_status "Using SSL renewal script..."
+        chmod +x scripts/ssl-renew.sh
+        ./scripts/ssl-renew.sh
+    else
+        print_error "SSL renewal script not found."
+        return 1
+    fi
+}
+
+# Function to test SSL setup
+test_ssl() {
+    print_step "Testing SSL setup with staging environment..."
     
-    print_status "Renewing SSL certificates..."
-    $compose_cmd -f docker-compose.nginx.yml run --rm certbot renew
+    local project_dir="${SCRIPT_DIR}/cls"
     
-    print_status "Restarting nginx to use renewed certificates..."
-    $compose_cmd -f docker-compose.nginx.yml restart nginx
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
     
-    print_status "SSL certificate renewal completed!"
+    cd "$project_dir"
+    
+    # Use the SSL test script
+    if [ -f "scripts/ssl-test.sh" ]; then
+        print_status "Using SSL test script..."
+        chmod +x scripts/ssl-test.sh
+        ./scripts/ssl-test.sh
+    else
+        print_error "SSL test script not found."
+        return 1
+    fi
+}
+
+# Function to switch to SSL mode
+switch_to_ssl() {
+    print_step "Switching to SSL mode..."
+    
+    local project_dir="${SCRIPT_DIR}/cls"
+    
+    if [ ! -d "$project_dir" ]; then
+        print_error "Project directory not found."
+        return 1
+    fi
+    
+    cd "$project_dir"
+    
+    # Check if SSL setup is complete
+    if [ ! -f "docker-compose.ssl.yml" ]; then
+        print_error "SSL setup not complete. Please run option 17 (Setup SSL certificates) first."
+        return 1
+    fi
+    
+    # Stop current nginx
+    print_status "Stopping current nginx..."
+    docker compose -f docker-compose.nginx.yml down nginx 2>/dev/null || true
+    
+    # Start SSL nginx
+    print_status "Starting nginx with SSL..."
+    docker compose -f docker-compose.ssl.yml up -d nginx
+    
+    # Wait for nginx to start
+    sleep 10
+    
+    # Check if nginx is running
+    if docker ps | grep -q "nginx"; then
+        print_status "✓ Nginx is running with SSL!"
+        print_status "Your application is now available at:"
+        print_status "  HTTP:  http://${domain:-localhost} (redirects to HTTPS)"
+        print_status "  HTTPS: https://${domain:-localhost}"
+    else
+        print_error "Nginx failed to start with SSL. Check logs:"
+        docker compose -f docker-compose.ssl.yml logs nginx
+        return 1
+    fi
 }
 
 # Main execution function
@@ -852,6 +921,8 @@ main() {
             16) reinitialize_app ;;
             17) setup_ssl ;;
             18) renew_ssl ;;
+            19) test_ssl ;;
+            20) switch_to_ssl ;;
             q|Q) 
                 print_status "Exiting..."
                 exit 0
