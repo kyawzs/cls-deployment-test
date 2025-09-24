@@ -381,7 +381,7 @@ deploy_docker_services() {
         local env_file="${SCRIPT_DIR}/cls/.env"
         if [ -f "$compose_file" ]; then
             print_status "Running docker-compose --env-file $env_file -f $compose_file up -d..."
-            if $compose_cmd --env-file "$env_file" -f "$compose_file" up -d; then
+            if $compose_cmd --env-file "$env_file" --project-directory "$SCRIPT_DIR/cls" -f "$compose_file" up -d; then
                 print_status "Docker services for container ${container_index} started successfully!"
                 print_status "Application should be available at: http://localhost:8081"
             else
