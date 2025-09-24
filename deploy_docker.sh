@@ -378,9 +378,10 @@ deploy_docker_services() {
     else
         print_step "Step 4/5: Starting CLS Docker services for container instance ${container_index}..."
         local compose_file="${SCRIPT_DIR}/cls/composes/docker-compose-ctr-${container_index}.yml"
+        local env_file="${SCRIPT_DIR}/cls/.env"
         if [ -f "$compose_file" ]; then
-            print_status "Running docker-compose -f $compose_file up -d..."
-            if $compose_cmd -f "$compose_file" up -d; then
+            print_status "Running docker-compose --env-file $env_file -f $compose_file up -d..."
+            if $compose_cmd --env-file "$env_file" -f "$compose_file" up -d; then
                 print_status "Docker services for container ${container_index} started successfully!"
                 print_status "Application should be available at: http://localhost:8081"
             else
