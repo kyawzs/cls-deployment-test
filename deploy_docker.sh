@@ -1,36 +1,3 @@
-
-# --- Place this at the very end of the script ---
-# Interactive main menu
-main() {
-    # Check if .env file exists and is valid
-    check_env_file
-
-    while true; do
-        show_menu
-        read -p "Select an option: " choice
-
-        case $choice in
-            1) setup_ssh_keys ;;
-            2) clone_project ;;
-            3) create_docker_env ;;
-            4) deploy_docker_services ;;
-            q|Q)
-                print_status "Exiting..."
-                exit 0
-                ;;
-            *)
-                print_error "Invalid option. Please try again."
-                ;;
-        esac
-
-        if [ "$choice" != "q" ] && [ "$choice" != "Q" ]; then
-            read -p "Press Enter to continue..."
-        fi
-    done
-}
-
-# Run main function
-main "$@"
 #!/bin/bash
 
 # CLS Docker Deployment Script
@@ -69,6 +36,18 @@ print_step() {
 # Function to check if command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# Function to confirm action
+confirm_action() {
+    local message="$1"
+    read -p "$message (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 # Function to detect SSH key files dynamically
@@ -357,7 +336,6 @@ create_docker_env() {
     print_status "Docker environment configuration completed!"
 }
 
-# Function to show menu
 # Function to get docker compose command
 get_docker_compose_cmd() {
     if command_exists docker-compose; then
@@ -367,7 +345,6 @@ get_docker_compose_cmd() {
     fi
 }
 
-# Function to start basic services
 # Function to deploy docker services
 deploy_docker_services() {
     local project_dir="${SCRIPT_DIR}/cls"
@@ -423,3 +400,59 @@ deploy_docker_services() {
     print_status "Current running services:"
     $compose_cmd ps
 }
+
+# Function to show menu
+show_menu() {
+    echo ""
+    echo "=========================================="
+    echo "  CLS Docker Deployment Management"
+    echo "=========================================="
+    echo ""
+    echo "Current Configuration:"
+    echo "  Domain: ${domain:-'Not set'}"
+    echo "  Database: ${db:-'Not set'}"
+    echo "  Repository: ${repo:-'Not set'}"
+    echo "  Branch: ${branch:-'Not set'}"
+    echo "  Container Index: ${container_index:-'Not set'}"
+    echo ""
+    echo "Available options:"
+    echo "  1) Setup SSH keys"
+    echo "  2) Clone Laravel project"
+    echo "  3) Create Docker environment"
+    echo "  4) Deploy Docker services"
+    echo "  q) Quit"
+    echo ""
+}
+
+# --- Place this at the very end of the script ---
+# Interactive main menu
+main() {
+    # Check if .env file exists and is valid
+    check_env_file
+
+    while true; do
+        show_menu
+        read -p "Select an option: " choice
+
+        case $choice in
+            1) setup_ssh_keys ;;
+            2) clone_project ;;
+            3) create_docker_env ;;
+            4) deploy_docker_services ;;
+            q|Q)
+                print_status "Exiting..."
+                exit 0
+                ;;
+            *)
+                print_error "Invalid option. Please try again."
+                ;;
+        esac
+
+        if [ "$choice" != "q" ] && [ "$choice" != "Q" ]; then
+            read -p "Press Enter to continue..."
+        fi
+    done
+}
+
+# Run main function
+main "$@"
