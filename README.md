@@ -1,20 +1,18 @@
-# CLS Laravel Project Deployment Scripts
+## 🚀 Deployment Scripts
 
-This repository contains improved deployment scripts for the CLS Laravel project, designed to work seamlessly with Ubuntu 22.04 and 24.04.
+This repository contains two main deployment scripts for the CLS Laravel project, designed for Ubuntu 22.04 and 24.04.
 
-## 🚀 New Interactive Deployment Script
-
-The main deployment script `deploy_cls.sh` is a comprehensive, interactive deployment tool that addresses all the issues from the original scripts:
+1.  `deploy_cls.sh`: For traditional "bare-metal" deployments using Apache and MySQL directly on the host.
+2.  `deploy_docker.sh`: For containerized deployments using Docker and Docker Compose.
 
 ### Key Improvements
 
-1. **Single Interactive Script**: All deployment steps are now consolidated into one script with a user-friendly menu system
-2. **Dynamic SSH Key Detection**: Automatically detects existing SSH keys instead of hardcoded `id_rsa.pub`
-3. **User-Friendly Execution**: Works with both root and regular users (uses sudo when needed)
-4. **Step-by-Step Execution**: Choose which steps to run or skip individual steps
-5. **Ubuntu 22.04/24.04 Compatible**: Tested and optimized for both Ubuntu versions
-6. **Comprehensive Error Handling**: Better error messages and validation
-7. **Colored Output**: Easy-to-read status messages with color coding
+- **Interactive Menus**: Both scripts provide user-friendly menus for step-by-step execution.
+- **Dynamic SSH Key Detection**: Automatically detects existing SSH keys.
+- **User-Friendly Execution**: Works with both `root` and regular users (uses `sudo` when needed).
+- **Ubuntu 22.04/24.04 Compatible**: Tested and optimized for both Ubuntu versions.
+- **Comprehensive Error Handling**: Better error messages and validation.
+- **Colored Output**: Easy-to-read status messages with color coding.
 
 ## 📋 Prerequisites
 
@@ -23,26 +21,22 @@ The main deployment script `deploy_cls.sh` is a comprehensive, interactive deplo
 - Git repository access
 - Domain name configured (for SSL setup)
 
-## 🛠️ Quick Start
-
-1. **Clone or download the deployment scripts**
-2. **Create your environment configuration**:
-   ```bash
-   cp .env.example .env
-   nano .env  # Edit with your configuration
-   ```
-3. **Make the script executable**:
-   ```bash
-   chmod +x deploy_cls.sh
-   ```
-4. **Run the deployment script**:
-   ```bash
-   ./deploy_cls.sh
-   ```
-
 ## ⚙️ Configuration
 
-Edit the `.env` file with your specific configuration:
+Both scripts use a shared `.env` file for configuration.
+
+1.  **Create your environment configuration**:
+    ```bash
+    cp .env.example .env
+    nano .env # Edit with your configuration
+    ```
+2.  **Make the scripts executable**:
+    ```bash
+    chmod +x deploy_cls.sh
+    chmod +x deploy_docker.sh
+    ```
+
+The `.env` file contains settings for domain, database, Git repository, and more.
 
 ```bash
 # Domain configuration
@@ -63,40 +57,60 @@ branch=main
 traccar_installer=https://github.com/traccar/traccar/releases/download/v5.8/traccar-linux-5.8.zip
 ```
 
-## 🎯 **Deployment Methods**
+## 🎯 Deployment Methods
 
-The script offers two deployment methods:
+### 1. Normal Deployment (`deploy_cls.sh`)
 
-### **1. Normal Deployment (Apache + MySQL on host)**
-- **Step 1**: Update system packages
-- **Step 2**: Install Apache, MySQL, PHP, and dependencies
-- **Step 3**: Setup SSH keys
-- **Step 4**: Configure database
-- **Step 5**: Clone Laravel project
-- **Step 6**: Configure Laravel project
-- **Step 7**: Setup SSL certificate
-- **Step 8**: Setup backup and maintenance cron jobs
-- **Step 9**: Setup server update cron job
-- **Step 10**: Install Traccar server
+This script sets up the entire environment on the host machine.
 
-### **2. Docker Deployment (Containerized)**
-- **Step 1**: Update system packages
-- **Step 2**: Install Docker and Docker Compose
-- **Step 3**: Setup SSH keys
-- **Step 4**: Clone Laravel project
-- **Step 5**: Configure Docker environment
-- **Step 6**: Deploy with Docker
-- **Step 7**: Setup Traccar service (optional)
+**Usage:**
+
+```bash
+./deploy_cls.sh
+```
+
+**Features:**
+
+- Installs Apache, MySQL, PHP, and other dependencies.
+- Configures the database and Apache virtual host.
+- Clones the project from your Git repository.
+- Sets up Laravel, including migrations and key generation.
+- Configures SSL using Let's Encrypt.
+- Sets up cron jobs for backups and maintenance.
+- Optionally installs Traccar server.
+
+### 2. Docker Deployment (`deploy_docker.sh`)
+
+This script automates the setup and management of a containerized CLS environment.
+
+**Usage:**
+
+```bash
+./deploy_docker.sh
+```
+
+**Features:**
+
+- **Automated Setup**: Installs Docker and Docker Compose, sets up SSH keys, and clones the project.
+- **Environment Configuration**: Configures all necessary `.env` files for the Docker setup.
+- **Multi-Profile Deployment**: Supports different deployment profiles:
+  - `development`: Includes Mailhog for email testing.
+  - `production`: Sets up an Nginx reverse proxy with SSL.
+  - `traccar`: Includes the Traccar GPS service.
+  - `basic`: A minimal setup with the application, database, and Redis.
+- **Service Management**: Provides commands to `start`, `stop`, `restart`, `update`, and view `logs` for your Docker containers.
 
 ## 🔧 Usage Options
 
 ### Interactive Mode
 ```bash
 ./deploy_cls.sh
+# or
+./deploy_docker.sh
 ```
-- Shows a menu to select individual steps
-- Allows skipping steps
-- Provides confirmation prompts
+- Shows a menu to select individual steps.
+- Allows running all steps at once or skipping to a specific step.
+- Provides confirmation prompts before executing critical actions.
 
 ### Run All Steps
 ```bash

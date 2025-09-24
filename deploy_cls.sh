@@ -971,29 +971,8 @@ main() {
         exit 0
     fi
     
-    # Main interactive loop
-    while true; do
-        show_initial_choice
-        read -p "Select deployment method: " choice
-        
-        case $choice in
-            1) 
-                print_status "Starting normal deployment..."
-                run_normal_deployment
-                ;;
-            2) 
-                print_status "Starting Docker deployment..."
-                run_docker_deployment
-                ;;
-            q|Q)
-                print_status "Exiting..."
-                exit 0
-                ;;
-            *)
-                print_error "Invalid option. Please try again."
-                ;;
-        esac
-    done
+    print_status "Starting normal deployment..."
+    run_normal_deployment
 }
 
 # Run main function
