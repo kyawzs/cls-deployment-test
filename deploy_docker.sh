@@ -1,3 +1,5 @@
+
+# --- Place this at the very end of the script ---
 # Interactive main menu
 main() {
     # Check if .env file exists and is valid
