@@ -1,3 +1,34 @@
+# Interactive main menu
+main() {
+    # Check if .env file exists and is valid
+    check_env_file
+
+    while true; do
+        show_menu
+        read -p "Select an option: " choice
+
+        case $choice in
+            1) setup_ssh_keys ;;
+            2) clone_project ;;
+            3) create_docker_env ;;
+            4) deploy_docker_services ;;
+            q|Q)
+                print_status "Exiting..."
+                exit 0
+                ;;
+            *)
+                print_error "Invalid option. Please try again."
+                ;;
+        esac
+
+        if [ "$choice" != "q" ] && [ "$choice" != "Q" ]; then
+            read -p "Press Enter to continue..."
+        fi
+    done
+}
+
+# Run main function
+main "$@"
 #!/bin/bash
 
 # CLS Docker Deployment Script
