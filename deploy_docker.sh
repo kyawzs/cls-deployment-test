@@ -304,12 +304,16 @@ create_docker_env() {
         sed -i.bak "s/QUEUE_CONNECTION=.*/QUEUE_CONNECTION=sync/g" .env && rm .env.bak
     fi
 
-    # Replace CONTAINER_INDEX in docker-compose files
-    print_status "Updating CONTAINER_INDEX in docker-compose files..."
-    if [ -f "docker-compose-ctr.yml" ]; then
-        # Create a temporary file with the container_index replaced
-        sed "s/CONTAINER_INDEX/${container_index}/g" docker-compose-ctr.yml > docker-compose-ctr-${container_index}.yml
-        print_status "Created docker-compose-ctr-${container_index}.yml with CONTAINER_INDEX=${container_index}"
+    # Generate docker-compose-ctr-N.yml in composes/ if container_index > 1
+    if [ "$container_index" -gt 1 ]; then
+        local compose_dir="${SCRIPT_DIR}/cls/composes"
+        mkdir -p "$compose_dir"
+        if [ -f "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" ]; then
+            sed "s/CONTAINER_INDEX/${container_index}/g" "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" > "$compose_dir/docker-compose-ctr-${container_index}.yml"
+            print_status "Created $compose_dir/docker-compose-ctr-${container_index}.yml with CONTAINER_INDEX=${container_index}"
+        else
+            print_error "docker-compose-ctr.yml template not found!"
+        fi
     fi
     
     print_status "Docker environment configuration completed!"
@@ -358,11 +362,10 @@ deploy_docker_services() {
         fi
     else
         print_step "Step 4/5: Starting CLS Docker services for container instance ${container_index}..."
-        print_status "Running docker-compose -f docker-compose-ctr.yml up -d..."
-        
-        # Use the updated compose file with container_index replaced
-        if [ -f "docker-compose-ctr-${container_index}.yml" ]; then
-            if $compose_cmd -f docker-compose-ctr-${container_index}.yml up -d; then
+        local compose_file="${SCRIPT_DIR}/cls/composes/docker-compose-ctr-${container_index}.yml"
+        if [ -f "$compose_file" ]; then
+            print_status "Running docker-compose -f $compose_file up -d..."
+            if $compose_cmd -f "$compose_file" up -d; then
                 print_status "Docker services for container ${container_index} started successfully!"
                 print_status "Application should be available at: http://localhost:8081"
             else
@@ -370,7 +373,7 @@ deploy_docker_services() {
                 return 1
             fi
         else
-            print_error "docker-compose-ctr-${container_index}.yml not found!"
+            print_error "$compose_file not found! Did you run step 3?"
             return 1
         fi
     fi
