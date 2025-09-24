@@ -308,9 +308,14 @@ create_docker_env() {
     if [ "$container_index" -gt 1 ]; then
         local compose_dir="${SCRIPT_DIR}/cls/composes"
         mkdir -p "$compose_dir"
+        local compose_target="$compose_dir/docker-compose-ctr-${container_index}.yml"
+        # Remove any old generated file in cls/ root (cleanup)
+        if [ -f "${SCRIPT_DIR}/cls/docker-compose-ctr-${container_index}.yml" ]; then
+            rm -f "${SCRIPT_DIR}/cls/docker-compose-ctr-${container_index}.yml"
+        fi
         if [ -f "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" ]; then
-            sed "s/CONTAINER_INDEX/${container_index}/g" "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" > "$compose_dir/docker-compose-ctr-${container_index}.yml"
-            print_status "Created $compose_dir/docker-compose-ctr-${container_index}.yml with CONTAINER_INDEX=${container_index}"
+            sed "s/CONTAINER_INDEX/${container_index}/g" "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" > "$compose_target"
+            print_status "Created $compose_target with CONTAINER_INDEX=${container_index}"
         else
             print_error "docker-compose-ctr.yml template not found!"
         fi
