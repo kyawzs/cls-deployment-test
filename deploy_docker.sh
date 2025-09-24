@@ -396,56 +396,6 @@ main() {
     # Check if .env file exists and is valid
     check_env_file
     
-    else
-        print_status "Starting CLS Docker services for container instance ${container_index}..."
-        local compose_file="${SCRIPT_DIR}/cls/composes/docker-compose-ctr-${container_index}.yml"
-        print_status "Running docker-compose -f $compose_file up -d..."
-        if [ -f "$compose_file" ]; then
-            if $compose_cmd -f "$compose_file" up -d; then
-                print_status "Docker services for container ${container_index} started successfully!"
-                print_status "Application should be available at: http://localhost:8081"
-            else
-                print_error "Failed to start Docker services for container ${container_index}!"
-                return 1
-            fi
-        else
-            print_error "$compose_file not found! Did you run step 3?"
-            return 1
-        fi
-    fi
-    
-    print_step "Step 3: Creating Docker environment..."
-    create_docker_env
-    
-    print_step "Step 4/5: Deploying Docker services..."
-    deploy_docker_services
-    
-    print_status "=========================================="
-    print_status "CLS Docker Deployment Completed!"
-    print_status "=========================================="
-    
-    if [ "$container_index" -eq 1 ]; then
-        echo ""
-        print_status "Services available:"
-        print_status "  • Main Application: http://localhost:8080"
-        print_status "  • Nginx Proxy Manager: http://localhost:81"
-        print_status "    - Default login: admin@example.com / changeme"
-        print_status "  • MySQL Database: localhost:3306"
-        print_status "  • Redis Cache: localhost:6379"
-    else
-        echo ""
-        print_status "Services available:"
-        print_status "  • Application Instance ${container_index}: http://localhost:8081"
-        print_status "  • MySQL Database: localhost:3306"
-        print_status "    (Note: Redis not available for container_index > 1)"
-    fi
-    
-    echo ""
-    print_status "Next steps:"
-    print_status "1. Configure your Nginx Proxy Manager at http://localhost:81"
-    print_status "2. Set up SSL certificates through the proxy manager"
-    print_status "3. Configure your domain to point to this server"
-    echo ""
 }
 
 # Function to show menu
