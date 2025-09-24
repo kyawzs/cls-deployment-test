@@ -396,24 +396,23 @@ main() {
     # Check if .env file exists and is valid
     check_env_file
     
-    echo ""
-    echo "=========================================="
-    echo "  CLS Docker Deployment Script"
-    echo "=========================================="
-    echo ""
-    echo "Current Configuration:"
-    echo "  Domain: ${domain:-'Not set'}"
-    echo "  Database: ${db:-'Not set'}"
-    echo "  Repository: ${repo:-'Not set'}"
-    echo "  Branch: ${branch:-'Not set'}"
-    echo "  Container Index: ${container_index:-'Not set'}"
-    echo ""
-    
-    print_step "Step 1: Setting up SSH keys..."
-    setup_ssh_keys
-    
-    print_step "Step 2: Cloning Laravel project..."
-    clone_project
+    else
+        print_status "Starting CLS Docker services for container instance ${container_index}..."
+        local compose_file="${SCRIPT_DIR}/cls/composes/docker-compose-ctr-${container_index}.yml"
+        print_status "Running docker-compose -f $compose_file up -d..."
+        if [ -f "$compose_file" ]; then
+            if $compose_cmd -f "$compose_file" up -d; then
+                print_status "Docker services for container ${container_index} started successfully!"
+                print_status "Application should be available at: http://localhost:8081"
+            else
+                print_error "Failed to start Docker services for container ${container_index}!"
+                return 1
+            fi
+        else
+            print_error "$compose_file not found! Did you run step 3?"
+            return 1
+        fi
+    fi
     
     print_step "Step 3: Creating Docker environment..."
     create_docker_env
@@ -543,11 +542,6 @@ main() {
             1) setup_ssh_keys ;;
             2)
                 clone_project
-                # After cloning, replace ALL occurrences of CONTAINER_INDEX in docker-compose-ctr.yml if it exists
-                if [ -f "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" ]; then
-                    # Replace all occurrences globally
-                    sed -i.bak "g;s/CONTAINER_INDEX/${container_index}/g" "${SCRIPT_DIR}/cls/docker-compose-ctr.yml" && rm -f "${SCRIPT_DIR}/cls/docker-compose-ctr.yml.bak"
-                fi
                 ;;
             3) create_docker_env ;;
             4) deploy_docker_services ;;
